@@ -148,13 +148,13 @@ function recordCommunityActivity(PDO $pdo, int $communityId, string $kind): void
   ]);
 }
 
-function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug = null, string $ownerToken = ''): ?int {
+function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug = null, string $ownerToken = '', ?int $accountId = null): ?int {
   $body = mb_substr(trim($body), 0, 240);
   if ($body === '') {
     return null;
   }
-  $stmt = $pdo->prepare('INSERT INTO messages(user_id, body, owner_token) VALUES (?, ?, ?)');
-  $stmt->execute([$userId, $body, $ownerToken]);
+  $stmt = $pdo->prepare('INSERT INTO messages(user_id, body, owner_token, account_id) VALUES (?, ?, ?, ?)');
+  $stmt->execute([$userId, $body, $ownerToken, $accountId]);
   $messageId = (int)$pdo->lastInsertId();
   recordUserActivity($pdo, $userId, 'message');
   assignMessageToCommunity($pdo, $messageId, $communitySlug);
@@ -171,13 +171,25 @@ function countMessages(PDO $pdo, string $q): int {
   return (int)$stmt->fetch()['c'];
 }
 
-function deleteMessage(PDO $pdo, int $id, string $ownerToken = ''): bool {
-  if ($id <= 0 || $ownerToken === '') {
+function deleteMessage(PDO $pdo, int $id, string $ownerToken = '', ?int $accountId = null): bool {
+  if ($id <= 0) {
     return false;
   }
-  $stmt = $pdo->prepare("UPDATE messages SET status = 'removed_by_owner' WHERE id = ? AND owner_token = ? AND status = 'visible'");
-  $stmt->execute([$id, $ownerToken]);
-  return $stmt->rowCount() > 0;
+  // Account-based ownership (persistent)
+  if ($accountId !== null && $accountId > 0) {
+    $stmt = $pdo->prepare("UPDATE messages SET status = 'removed_by_owner' WHERE id = ? AND account_id = ? AND status = 'visible'");
+    $stmt->execute([$id, $accountId]);
+    if ($stmt->rowCount() > 0) {
+      return true;
+    }
+  }
+  // Session-token ownership (anonymous fallback)
+  if ($ownerToken !== '') {
+    $stmt = $pdo->prepare("UPDATE messages SET status = 'removed_by_owner' WHERE id = ? AND owner_token = ? AND status = 'visible'");
+    $stmt->execute([$id, $ownerToken]);
+    return $stmt->rowCount() > 0;
+  }
+  return false;
 }
 
 function reactMessage(PDO $pdo, int $id, string $type): void {
@@ -199,7 +211,7 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
   } elseif ($sort === 'top') {
     $order = ' (CAST(m.upvotes AS SIGNED) - CAST(m.downvotes AS SIGNED)) DESC, m.id DESC';
   }
-  $base = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token,
+  $base = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.account_id,
                   u.nickname,
                   c.name AS community_name, c.slug AS community_slug
            FROM messages m
@@ -227,7 +239,7 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
 }
 
 function getMessage(PDO $pdo, int $id): ?array {
-  $sql = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.status,
+  $sql = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.account_id, m.status,
                  u.nickname,
                  c.name AS community_name, c.slug AS community_slug
           FROM messages m
@@ -267,8 +279,9 @@ function addComment(PDO $pdo, int $messageId, string $nickname, string $body): ?
     recordCommunityActivity($pdo, $communityId, 'comment');
   }
 
-  $insert = $pdo->prepare('INSERT INTO comments(message_id, nickname, body) VALUES (?, ?, ?)');
-  $insert->execute([$messageId, $nickname, $body]);
+  $acctId = $_SESSION['account_id'] ?? null;
+  $insert = $pdo->prepare('INSERT INTO comments(message_id, nickname, body, account_id) VALUES (?, ?, ?, ?)');
+  $insert->execute([$messageId, $nickname, $body, $acctId]);
   $commentId = (int)$pdo->lastInsertId();
 
   return getComment($pdo, $commentId);
@@ -473,4 +486,109 @@ function getCommentForAdmin(PDO $pdo, int $id): ?array {
   $stmt = $pdo->prepare($sql);
   $stmt->execute([$id]);
   return $stmt->fetch() ?: null;
+}
+
+// ── Accounts ─────────────────────────────────────────────────────────
+
+function registerAccount(PDO $pdo, string $email, string $password, string $displayName): ?int {
+  $email = strtolower(trim($email));
+  $displayName = mb_substr(trim($displayName), 0, 60);
+  if ($email === '' || $displayName === '' || mb_strlen($password) < 8) {
+    return null;
+  }
+  // Check uniqueness
+  $stmt = $pdo->prepare('SELECT id FROM accounts WHERE email = ?');
+  $stmt->execute([$email]);
+  if ($stmt->fetch()) {
+    return null; // email already taken
+  }
+  $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+  $stmt = $pdo->prepare('INSERT INTO accounts(email, password_hash, display_name) VALUES (?, ?, ?)');
+  $stmt->execute([$email, $hash, $displayName]);
+  return (int)$pdo->lastInsertId();
+}
+
+function authenticateAccount(PDO $pdo, string $email, string $password): ?array {
+  $email = strtolower(trim($email));
+  $stmt = $pdo->prepare('SELECT id, email, password_hash, display_name, bio, role FROM accounts WHERE email = ?');
+  $stmt->execute([$email]);
+  $row = $stmt->fetch();
+  if (!$row || !password_verify($password, $row['password_hash'])) {
+    return null;
+  }
+  unset($row['password_hash']);
+  return $row;
+}
+
+function getAccountById(PDO $pdo, int $id): ?array {
+  $stmt = $pdo->prepare('SELECT id, email, display_name, bio, role, created_at FROM accounts WHERE id = ?');
+  $stmt->execute([$id]);
+  return $stmt->fetch() ?: null;
+}
+
+function getPublicProfile(PDO $pdo, int $accountId): ?array {
+  $stmt = $pdo->prepare('SELECT id, display_name, bio, created_at FROM accounts WHERE id = ?');
+  $stmt->execute([$accountId]);
+  $account = $stmt->fetch();
+  if (!$account) {
+    return null;
+  }
+  // Count posts
+  $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM messages WHERE account_id = ? AND status = 'visible'");
+  $stmt->execute([$accountId]);
+  $account['post_count'] = (int)$stmt->fetch()['c'];
+  // Count comments
+  $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM comments WHERE account_id = ? AND status = 'visible'");
+  $stmt->execute([$accountId]);
+  $account['comment_count'] = (int)$stmt->fetch()['c'];
+  return $account;
+}
+
+function getRecentPostsByAccount(PDO $pdo, int $accountId, int $limit = 10): array {
+  $stmt = $pdo->prepare(
+    "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes,
+            u.nickname, c.name AS community_name, c.slug AS community_slug
+     FROM messages m
+     JOIN users u ON u.id = m.user_id
+     LEFT JOIN message_topics mt ON mt.message_id = m.id
+     LEFT JOIN communities c ON c.id = mt.community_id
+     WHERE m.account_id = ? AND m.status = 'visible'
+     ORDER BY m.created_at DESC
+     LIMIT ?"
+  );
+  $stmt->execute([$accountId, $limit]);
+  return $stmt->fetchAll();
+}
+
+function updateAccountProfile(PDO $pdo, int $accountId, string $displayName, string $bio): bool {
+  $displayName = mb_substr(trim($displayName), 0, 60);
+  $bio = mb_substr(trim($bio), 0, 500);
+  if ($displayName === '') {
+    return false;
+  }
+  $stmt = $pdo->prepare('UPDATE accounts SET display_name = ?, bio = ? WHERE id = ?');
+  $stmt->execute([$displayName, $bio, $accountId]);
+  return $stmt->rowCount() >= 0; // 0 rows is OK if nothing changed
+}
+
+function updateAccountPassword(PDO $pdo, int $accountId, string $currentPassword, string $newPassword): bool {
+  if (mb_strlen($newPassword) < 8) {
+    return false;
+  }
+  $stmt = $pdo->prepare('SELECT password_hash FROM accounts WHERE id = ?');
+  $stmt->execute([$accountId]);
+  $row = $stmt->fetch();
+  if (!$row || !password_verify($currentPassword, $row['password_hash'])) {
+    return false;
+  }
+  $hash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+  $stmt = $pdo->prepare('UPDATE accounts SET password_hash = ? WHERE id = ?');
+  $stmt->execute([$hash, $accountId]);
+  return true;
+}
+
+function isEmailTaken(PDO $pdo, string $email): bool {
+  $stmt = $pdo->prepare('SELECT 1 FROM accounts WHERE email = ?');
+  $stmt->execute([strtolower(trim($email))]);
+  return (bool)$stmt->fetch();
 }

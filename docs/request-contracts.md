@@ -220,6 +220,118 @@ Flash messages are stored in `$_SESSION['flash']` and displayed once by `views/h
 
 Rate limited: max `RATE_LIMIT_REPORTS_PER_10M` (default 5) per 10 minutes per IP.
 
+---
+
+## Register
+
+**Action:** `register`
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"register"` |
+| `csrf` | string | yes | CSRF token |
+| `display_name` | string | yes | 1–60 chars |
+| `email` | string | yes | Valid email, must be unique |
+| `password` | string | yes | Min 8 chars |
+| `password_confirm` | string | yes | Must match `password` |
+
+### Success
+
+Redirects 303 to home. Sets `$_SESSION['account_id']` and `$_SESSION['account']`. Session ID is regenerated (fixation prevention).
+
+### Failure
+
+Redirects 303 to `?page=register` with `$_SESSION['flash']` containing error (e.g., "Email is already registered", "Passwords do not match", "Password must be at least 8 characters").
+
+---
+
+## Login
+
+**Action:** `login`
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"login"` |
+| `csrf` | string | yes | CSRF token |
+| `email` | string | yes | Registered email |
+| `password` | string | yes | Account password |
+
+### Success
+
+Redirects 303 to home. Sets `$_SESSION['account_id']` and `$_SESSION['account']`. Session ID is regenerated.
+
+### Failure
+
+Redirects 303 to `?page=login` with `$_SESSION['flash'] = 'Invalid email or password.'`
+
+---
+
+## Logout
+
+**Action:** `logout`
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"logout"` |
+| `csrf` | string | yes | CSRF token |
+
+### Success
+
+Destroys session, redirects 303 to home.
+
+---
+
+## Update profile
+
+**Action:** `update_profile`
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"update_profile"` |
+| `csrf` | string | yes | CSRF token |
+| `display_name` | string | yes | 1–60 chars |
+| `bio` | string | no | Free text, max 500 chars (truncated) |
+
+### Success
+
+Redirects 303 to `?page=profile` with `$_SESSION['flash'] = 'Profile updated.'`
+
+### Failure
+
+Requires login. Redirects 303 to `?page=login` if not authenticated.
+
+---
+
+## Change password
+
+**Action:** `change_password`
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"change_password"` |
+| `csrf` | string | yes | CSRF token |
+| `current_password` | string | yes | Current account password |
+| `new_password` | string | yes | Min 8 chars |
+| `new_password_confirm` | string | yes | Must match `new_password` |
+
+### Success
+
+Redirects 303 to `?page=profile` with `$_SESSION['flash'] = 'Password updated.'`
+
+### Failure
+
+Redirects with flash: "Current password is incorrect", "Passwords do not match", "New password must be at least 8 characters".
+
 ### Request
 
 | Field | Type | Required | Notes |

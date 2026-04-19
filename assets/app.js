@@ -40,10 +40,17 @@ document.addEventListener('DOMContentLoaded', () => {
     return el ? el.value : '';
   }
 
+  // Detect logged-in state from composer nickname field
+  var composerNick = document.querySelector('#composerForm input[name="nick"]');
+  var loggedInName = (composerNick && composerNick.readOnly) ? composerNick.value : '';
+
   function renderMessage(m) {
     var cs = (m.comments || []).map(renderComment).join('');
     var emptyNote = cs ? '' : '<p class="comment-empty muted">No comments yet.</p>';
     var csrf = csrfValue();
+    var nickField = loggedInName
+      ? '<input type="text" name="nick" value="' + escapeHtml(loggedInName) + '" readonly class="input-locked" maxlength="60">'
+      : '<input type="text" name="nick" placeholder="Alias" maxlength="60" required>';
     return (
       '<article class="msg reveal show" id="msg_' + m.id + '" data-community="' + escapeHtml(m.community_slug || 'general') + '">' +
         '<div class="msg-head">' +
@@ -75,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
           '<div class="comments-list" id="comments_' + m.id + '">' + emptyNote + cs + '</div>' +
           '<form method="post" action="" class="comment-form" data-message-id="' + m.id + '">' +
             '<div class="row">' +
-              '<input type="text" name="nick" placeholder="Alias" maxlength="60" required>' +
+              nickField +
               '<button class="btn-outline">Comment</button>' +
             '</div>' +
             '<textarea name="body" placeholder="Share your take..." maxlength="240" required rows="3"></textarea>' +

@@ -200,3 +200,62 @@ fetch('/', {
 4. As admin, the post can be restored via mod_action with `restore`.
 
 **Pass:** deletes are soft (status change), not hard (row removal).
+
+---
+
+## 15. Registration
+
+1. Navigate to `/?page=register`.
+2. Registration form shows display name, email, password, confirm password fields.
+3. Submit with mismatched passwords — client-side validation prevents submit.
+4. Submit with a password under 8 characters — client-side validation prevents submit.
+5. Submit with valid data — redirected to home page.
+6. Header shows "Hi, [DisplayName]" with Profile and Log out buttons.
+7. Login/Register buttons are no longer shown.
+
+**Pass:** registration creates account, logs in automatically, header reflects auth state.
+
+---
+
+## 16. Login / Logout
+
+1. Click **Log out** — session is destroyed, redirected to home.
+2. Header shows Login and Register buttons again.
+3. Navigate to `/?page=login`.
+4. Enter wrong password — flash shows "Invalid email or password."
+5. Enter correct credentials — redirected to home, header shows authenticated state.
+
+**Pass:** login/logout cycle works correctly with proper flash feedback.
+
+---
+
+## 17. Account-linked posting
+
+1. While logged in, open the composer form.
+2. Nickname field is pre-filled with your display name and is read-only.
+3. Create a post — post appears with your display name.
+4. Log out and back in — the post still shows the Delete button (account-linked ownership).
+5. Open a different browser/incognito — the post does NOT show a Delete button (different account).
+
+**Pass:** logged-in posts are linked to account_id, ownership persists across sessions.
+
+---
+
+## 18. User profile
+
+1. While logged in, click **Profile** in the header.
+2. Profile page shows avatar initial, display name, member-since date, bio, stats (posts/comments).
+3. Edit display name and bio in the sidebar form — changes save and reflect immediately.
+4. Change password in the sidebar form — confirms "Password updated."
+5. Navigate to `/?page=user&id=N` (another user's ID) — public profile shows, no edit forms.
+
+**Pass:** own profile is editable, public profiles are read-only.
+
+---
+
+## 19. 404 page
+
+1. Navigate to `/?page=nonexistent`.
+2. Themed 404 page renders with "Page Not Found" message and a link back to home.
+
+**Pass:** unknown pages show 404, not a blank screen or PHP error.

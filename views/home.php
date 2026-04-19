@@ -19,6 +19,18 @@
         </div>
       </div>
       <div class="header-right">
+        <?php if (!empty($currentAccountId)): ?>
+          <span class="user-greeting">Hi, <?= htmlspecialchars($currentAccount['display_name'] ?? 'User') ?></span>
+          <a href="?page=profile" class="btn-outline">Profile</a>
+          <form method="post" action="" style="display:inline;">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="logout">
+            <button class="btn-outline">Log out</button>
+          </form>
+        <?php else: ?>
+          <a href="?page=login" class="btn-outline">Log in</a>
+          <a href="?page=register" class="btn-outline btn-register">Register</a>
+        <?php endif; ?>
         <a href="?page=about" class="btn-outline">About</a>
         <a href="?page=creator" class="btn-outline">Creator</a>
         <a href="?page=links" class="btn-outline">Socials</a>
@@ -49,7 +61,11 @@
           <?php $composerCommunities = $communities ?? []; ?>
           <form method="post" action="" id="composerForm">
             <div class="row stretch" style="margin-bottom: 10px; gap: 12px;">
-              <input type="text" name="nick" placeholder="Alias (e.g., MoonWatcher)" required>
+              <?php if (!empty($currentAccountId)): ?>
+                <input type="text" name="nick" value="<?= htmlspecialchars($currentAccount['display_name'] ?? '') ?>" readonly class="input-locked" title="Posting as your account name">
+              <?php else: ?>
+                <input type="text" name="nick" placeholder="Alias (e.g., MoonWatcher)" required>
+              <?php endif; ?>
               <select name="community">
                 <?php
                   $seen = [];
@@ -101,8 +117,10 @@
             <?php else: foreach ($messages as $m): ?>
               <?php
                 $comments  = $m['comments'] ?? [];
-                $isOwner   = isset($m['owner_token'], $_SESSION['author_token'])
-                             && hash_equals($m['owner_token'], $_SESSION['author_token']);
+                $isOwner   = (isset($m['owner_token'], $_SESSION['author_token'])
+                              && hash_equals($m['owner_token'], $_SESSION['author_token']))
+                             || (!empty($m['account_id']) && !empty($_SESSION['account_id'])
+                              && (int)$m['account_id'] === (int)$_SESSION['account_id']);
               ?>
               <article class="msg" id="msg_<?= (int)$m['id'] ?>" data-community="<?= htmlspecialchars($m['community_slug'] ?? 'general') ?>">
                 <div class="msg-head">

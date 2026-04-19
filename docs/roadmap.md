@@ -45,27 +45,43 @@ This is where we are now. Goals:
 ## After that: hardening
 
 - CSRF token rotation after successful POST.
-- Rate limiting on post/comment/vote.
+- [x] Rate limiting on post/comment/vote.
 - FK constraint: `messages.user_id` → `users.id`.
 - Input sanitization audit (body length already enforced at 240).
 - Persistent anonymous identity via long-lived cookie (not sessions).
-- Error page for 404 / 500.
+- [x] Error page for 404 / 500.
+
+## Phase 4: User accounts (landed)
+
+- [x] `accounts` table (email, password_hash, display_name, bio, role, timestamps).
+- [x] Registration with bcrypt (cost 12), min 8 char passwords.
+- [x] Login/logout with session regeneration (fixation prevention).
+- [x] Hybrid ownership: anonymous via `owner_token`, logged-in via `account_id`.
+- [x] User profiles (own + public).
+- [x] Auth-aware header navigation (login/register/profile/logout).
+- [x] Auth-aware composer (nickname locked to display_name when logged in).
+- [x] Account-linked comments (account_id stored).
+- [x] 404 themed error page.
+- [x] Auth + profile CSS styles.
 
 ## Later: product expansion
 
 - Moderation tools (report, ban, content filter).
 - Nested/threaded comment replies.
-- User profiles (the `user_profiles` table exists but is unused).
+- ~~User profiles~~ (landed in Phase 4).
 - Community management (create/edit by users).
 - Real-time updates (SSE or polling, not WebSockets).
 - Image/media attachments.
-- Admin panel.
+- ~~Admin panel~~ (landed in Phase 3 — moderation).
+- Email verification on registration.
+- Password reset flow.
+- Notification system.
 
 ## Explicitly deferred for now
 
 | Item | Reason |
 |------|--------|
-| Authentication / login | Design decision pending. Current anonymous model is intentional. |
+| ~~Authentication / login~~ | **Landed in Phase 4.** |
 | Docker | Not needed for local dev. PHP built-in server suffices. |
 | CI/CD | No automated tests yet — nothing to run in a pipeline. |
 | WebSockets / SSE | Premature. Polling or SSE can be added later. |

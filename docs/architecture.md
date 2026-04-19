@@ -10,12 +10,22 @@ Browser
   ├─ GET /                      → index.php → render('home', ...) → views/home.php
   ├─ GET /?page=about           → index.php → render('about', []) → views/about.php
   ├─ GET /?page=admin           → index.php → render('admin', ...) → views/admin.php
+  ├─ GET /?page=register        → index.php → render('register', ...) → views/register.php
+  ├─ GET /?page=login           → index.php → render('login', ...) → views/login.php
+  ├─ GET /?page=profile         → index.php → render('profile', ...) → views/profile.php (own)
+  ├─ GET /?page=user&id=N       → index.php → render('profile', ...) → views/profile.php (public)
+  ├─ GET /?page=*               → index.php → render('404', []) → views/404.php
   │
   ├─ POST action=add            → index.php → rate limit → addMessage() → JSON or PRG redirect
   ├─ POST action=comment        → index.php → rate limit → addComment() → JSON or PRG redirect
   ├─ POST action=react          → index.php → rate limit → reactMessage() → JSON or PRG redirect
   ├─ POST action=delete         → index.php → deleteMessage() → JSON or PRG redirect
   ├─ POST action=report         → index.php → rate limit → submitReport() → JSON or PRG redirect
+  ├─ POST action=register       → index.php → registerAccount() → session → redirect
+  ├─ POST action=login          → index.php → authenticateAccount() → session → redirect
+  ├─ POST action=logout         → index.php → session_destroy() → redirect
+  ├─ POST action=update_profile → index.php → updateAccountProfile() → redirect
+  ├─ POST action=change_password→ index.php → updateAccountPassword() → redirect
   ├─ POST action=admin_login    → index.php → session admin flag → redirect
   ├─ POST action=admin_logout   → index.php → clear admin flag → redirect
   └─ POST action=mod_action     → index.php → admin check → moderateContent() → redirect
@@ -82,6 +92,14 @@ Key functions:
 | `ensureCommunity($pdo, $slug, $name, $tagline)` | Idempotent community creation |
 | `recordUserActivity($pdo, $userId, $kind)` | Upsert user activity counters |
 | `recordCommunityActivity($pdo, $communityId, $kind)` | Upsert daily community trend |
+| `registerAccount($pdo, $email, $password, $displayName)` | Create account (bcrypt cost 12), returns account array |
+| `authenticateAccount($pdo, $email, $password)` | Verify credentials, returns account or null |
+| `getAccountById($pdo, $id)` | Fetch account by ID |
+| `getPublicProfile($pdo, $id)` | Public profile + post/comment counts |
+| `getRecentPostsByAccount($pdo, $accountId, $limit)` | Recent visible messages by account |
+| `updateAccountProfile($pdo, $id, $displayName, $bio)` | Update display name and bio |
+| `updateAccountPassword($pdo, $id, $newPassword)` | Change password (bcrypt) |
+| `isEmailTaken($pdo, $email)` | Check email uniqueness |
 
 ### lib/utils.php
 
@@ -116,6 +134,22 @@ Admin moderation interface. Contains:
 - **Report cards** — display target content preview, reason badge, timestamp, reporter note.
 - **Action buttons** — Hide, Remove, Dismiss per open report. Each is a separate form with `action=mod_action`.
 - **Logout button** — `action=admin_logout`.
+
+### views/register.php
+
+Registration form with display name, email, password, and confirm password fields. CSRF-protected. Validates password length (min 8) and match client-side. Themed with auth-page/auth-card styles.
+
+### views/login.php
+
+Login form with email and password fields. CSRF-protected. Links to register page. Displays flash error on bad credentials.
+
+### views/profile.php
+
+Dual-purpose: own profile (editable) and public profile (read-only). Shows avatar initial, display name, member-since date, bio, post/comment counts, recent posts list. Own profile includes sidebar with edit profile form, change password form, and logout button.
+
+### views/404.php
+
+Themed 404 error page with conspiracy humor. Back-to-home link.
 
 ### assets/app.js
 
@@ -152,8 +186,9 @@ Single responsibility: textarea character counter for `#msgBox` / `#countHint`.
 
 | Table | Purpose |
 |-------|---------|
-| `messages` | Posts: id, user_id, body(240), owner_token(64), upvotes, downvotes, status, created_at |
-| `comments` | Comments: id, message_id (FK→messages CASCADE), nickname(60), body(240), status, created_at |
+| `accounts` | User accounts: id, email (UNIQUE), password_hash, display_name, bio, role, created_at, updated_at |
+| `messages` | Posts: id, user_id, body(240), owner_token(64), account_id (nullable FK→accounts), upvotes, downvotes, status, created_at |
+| `comments` | Comments: id, message_id (FK→messages CASCADE), nickname(60), body(240), account_id (nullable FK→accounts), status, created_at |
 | `users` | Unique nicknames: id, nickname (UNIQUE), created_at |
 | `communities` | Slug-based: id, slug (UNIQUE), name, tagline, created_at |
 | `message_topics` | Message→community mapping: message_id (PK, FK→messages), community_id (FK→communities) |
@@ -170,14 +205,25 @@ Single responsibility: textarea character counter for `#msgBox` / `#countHint`.
 2. `2025_10_28_comments.sql` — comments with FK to messages
 3. `2025_10_29_social_tables.sql` — users, communities, topics, trends, profiles, activity; seeds default communities; idempotent `owner_token` backfill
 4. `2025_10_30_moderation.sql` — adds status columns to messages/comments, creates reports, moderation_log, and rate_limits tables
+5. `2025_10_31_accounts.sql` — accounts table, adds account_id to messages and comments
 
 ## Ownership model
 
+### Anonymous (session-based)
+
 - On session start, `index.php` generates `$_SESSION['author_token']` (64-char hex via `random_bytes(32)`).
-- When a message is created, the token is stored in `messages.owner_token`.
+- When a message is created anonymously, the token is stored in `messages.owner_token`.
 - `views/home.php` compares `$m['owner_token']` to `$_SESSION['author_token']` to decide whether to show the Delete button.
-- `deleteMessage()` requires the token to match: soft-deletes by setting `status = 'removed_by_owner'`.
-- This is **not authentication**. Session loss = ownership loss. Pre-existing posts with empty `owner_token` are undeletable.
+- `deleteMessage()` checks the token match: soft-deletes by setting `status = 'removed_by_owner'`.
+- Session loss = ownership loss. Pre-existing posts with empty `owner_token` are undeletable.
+
+### Logged-in (account-based)
+
+- When logged in, `$_SESSION['account_id']` is set and `messages.account_id` is populated on new posts.
+- Ownership check: `views/home.php` checks both `owner_token` match AND `account_id` match.
+- `deleteMessage()` accepts both `$ownerToken` and `$currentAccountId` — matches either.
+- Account-linked posts survive session loss: the user can always manage their posts after re-login.
+- Comments by logged-in users also store `account_id` for attribution.
 
 ## Current strengths
 
@@ -197,12 +243,13 @@ Single responsibility: textarea character counter for `#msgBox` / `#countHint`.
 
 ## Current limits
 
-- No persistent identity across sessions.
+- No email verification on registration.
+- No password reset flow.
 - No FK from `messages.user_id` → `users.id`.
 - Nickname is globally unique — collisions prevent aliases.
 - No automated tests.
 - No migration runner; manual apply required.
-- `user_profiles` table exists but is unused.
+- `user_profiles` table exists but is unused (superseded by `accounts.bio`).
 
 ## Future change guidance
 

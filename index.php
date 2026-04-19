@@ -11,10 +11,9 @@ session_set_cookie_params([
     'samesite'  => 'Strict',
     'secure'    => $isSecure,
 ]);
-require __DIR__ . '/config.php';
-
-// session cookie params here, if config.php exposes what is needed
 session_start();
+
+require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/utils.php';
 
 // -- Anonymous ownership token (stable per session) --
@@ -22,6 +21,10 @@ if (empty($_SESSION['author_token'])) {
     $_SESSION['author_token'] = bin2hex(random_bytes(32));
 }
 $authorToken = $_SESSION['author_token'];
+
+// -- Logged-in account (null when anonymous) --
+$currentAccount = $_SESSION['account'] ?? null;
+$currentAccountId = $_SESSION['account_id'] ?? null;
 
 // Ensure the primary community exists so UI lists never come back empty.
 ensureCommunity($pdo, 'general', 'General', 'Open discussion for any conspiracy angle.');
@@ -50,6 +53,64 @@ if (in_array($pageName, ['about', 'creator', 'links', 'privacy'], true)) {
     exit;
 }
 
+// -- Auth pages --
+if ($pageName === 'register') {
+    if ($currentAccountId) {
+        header('Location: /', true, 303);
+        exit;
+    }
+    render('register', []);
+    exit;
+}
+if ($pageName === 'login') {
+    if ($currentAccountId) {
+        header('Location: /', true, 303);
+        exit;
+    }
+    render('login', []);
+    exit;
+}
+
+// -- Profile page (own) --
+if ($pageName === 'profile') {
+    if (!$currentAccountId) {
+        $_SESSION['flash'] = 'Please log in to view your profile.';
+        header('Location: ?page=login', true, 303);
+        exit;
+    }
+    $profileAccount = getAccountById($pdo, $currentAccountId);
+    $profilePosts   = getRecentPostsByAccount($pdo, $currentAccountId, 20);
+    render('profile', [
+        'account'   => $profileAccount,
+        'posts'     => $profilePosts,
+        'is_own'    => true,
+    ]);
+    exit;
+}
+
+// -- Public user profile --
+if ($pageName === 'user') {
+    $userId = (int)($_GET['id'] ?? 0);
+    if ($userId <= 0) {
+        http_response_code(404);
+        render('404', []);
+        exit;
+    }
+    $profileData = getPublicProfile($pdo, $userId);
+    if (!$profileData) {
+        http_response_code(404);
+        render('404', []);
+        exit;
+    }
+    $profilePosts = getRecentPostsByAccount($pdo, $userId, 20);
+    render('profile', [
+        'account'   => $profileData,
+        'posts'     => $profilePosts,
+        'is_own'    => ($currentAccountId === $userId),
+    ]);
+    exit;
+}
+
 // -- Admin page --
 if ($pageName === 'admin') {
     $isAdmin = !empty($_SESSION['is_admin']);
@@ -66,6 +127,13 @@ if ($pageName === 'admin') {
         'report_status' => $reportStatus,
         'open_count' => $openCount,
     ]);
+    exit;
+}
+
+// -- Unknown page → 404 --
+if ($pageName !== '' && $pageName !== 'home') {
+    http_response_code(404);
+    render('404', []);
     exit;
 }
 
@@ -112,11 +180,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // -- Create post --
     if ($action === 'add') {
-        $nick          = $_POST['nick'] ?? 'Anon';
+        $nick          = $currentAccount ? $currentAccount['display_name'] : ($_POST['nick'] ?? 'Anon');
         $msg           = $_POST['msg'] ?? '';
         $communitySlug = $_POST['community'] ?? null;
         $uid           = findOrCreateUser($pdo, $nick);
-        $messageId     = addMessage($pdo, $uid, $msg, $communitySlug, $authorToken);
+        $messageId     = addMessage($pdo, $uid, $msg, $communitySlug, $authorToken, $currentAccountId);
 
         if ($xhr) {
             header('Content-Type: application/json');
@@ -168,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // -- Delete (ownership-aware) --
     } elseif ($action === 'delete') {
         $id      = (int)($_POST['id'] ?? 0);
-        $deleted = deleteMessage($pdo, $id, $authorToken);
+        $deleted = deleteMessage($pdo, $id, $authorToken, $currentAccountId);
 
         if ($xhr) {
             header('Content-Type: application/json');
@@ -280,6 +348,128 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ?page=admin', true, 303);
         exit;
 
+    // -- Register account --
+    } elseif ($action === 'register') {
+        $email       = $_POST['email'] ?? '';
+        $password    = $_POST['password'] ?? '';
+        $confirm     = $_POST['password_confirm'] ?? '';
+        $displayName = $_POST['display_name'] ?? '';
+
+        if ($password !== $confirm) {
+            $_SESSION['flash'] = 'Passwords do not match.';
+            header('Location: ?page=register', true, 303);
+            exit;
+        }
+        if (mb_strlen($password) < 8) {
+            $_SESSION['flash'] = 'Password must be at least 8 characters.';
+            header('Location: ?page=register', true, 303);
+            exit;
+        }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $_SESSION['flash'] = 'Invalid email address.';
+            header('Location: ?page=register', true, 303);
+            exit;
+        }
+        if (mb_strlen(trim($displayName)) < 1 || mb_strlen(trim($displayName)) > 60) {
+            $_SESSION['flash'] = 'Display name is required (max 60 chars).';
+            header('Location: ?page=register', true, 303);
+            exit;
+        }
+
+        $accountId = registerAccount($pdo, $email, $password, $displayName);
+        if (!$accountId) {
+            $_SESSION['flash'] = 'Email is already registered.';
+            header('Location: ?page=register', true, 303);
+            exit;
+        }
+
+        // Auto-login after registration
+        session_regenerate_id(true);
+        $_SESSION['account_id'] = $accountId;
+        $_SESSION['account']    = [
+            'display_name' => trim($displayName),
+            'role'         => 'user',
+        ];
+        $_SESSION['flash'] = 'Welcome to the Cave, ' . htmlspecialchars(trim($displayName)) . '!';
+        header('Location: /', true, 303);
+        exit;
+
+    // -- Login --
+    } elseif ($action === 'login') {
+        $email    = $_POST['email'] ?? '';
+        $password = $_POST['password'] ?? '';
+        $account  = authenticateAccount($pdo, $email, $password);
+
+        if (!$account) {
+            $_SESSION['flash'] = 'Invalid email or password.';
+            header('Location: ?page=login', true, 303);
+            exit;
+        }
+
+        session_regenerate_id(true);
+        $_SESSION['account_id'] = (int)$account['id'];
+        $_SESSION['account']    = [
+            'display_name' => $account['display_name'],
+            'role'         => $account['role'],
+        ];
+        // Promote to admin session if account role is admin
+        if ($account['role'] === 'admin') {
+            $_SESSION['is_admin'] = true;
+        }
+        $_SESSION['flash'] = 'Welcome back, ' . htmlspecialchars($account['display_name']) . '!';
+        header('Location: /', true, 303);
+        exit;
+
+    // -- Logout --
+    } elseif ($action === 'logout') {
+        unset($_SESSION['account_id'], $_SESSION['account'], $_SESSION['is_admin']);
+        session_regenerate_id(true);
+        $_SESSION['flash'] = 'You have been logged out.';
+        header('Location: /', true, 303);
+        exit;
+
+    // -- Update profile --
+    } elseif ($action === 'update_profile') {
+        if (!$currentAccountId) {
+            http_response_code(403);
+            echo 'Not logged in';
+            exit;
+        }
+        $displayName = $_POST['display_name'] ?? '';
+        $bio         = $_POST['bio'] ?? '';
+        $updated = updateAccountProfile($pdo, $currentAccountId, $displayName, $bio);
+        if ($updated) {
+            $_SESSION['account']['display_name'] = mb_substr(trim($displayName), 0, 60);
+            $_SESSION['flash'] = 'Profile updated.';
+        } else {
+            $_SESSION['flash'] = 'Display name is required.';
+        }
+        header('Location: ?page=profile', true, 303);
+        exit;
+
+    // -- Change password --
+    } elseif ($action === 'change_password') {
+        if (!$currentAccountId) {
+            http_response_code(403);
+            echo 'Not logged in';
+            exit;
+        }
+        $currentPw = $_POST['current_password'] ?? '';
+        $newPw     = $_POST['new_password'] ?? '';
+        $confirmPw = $_POST['new_password_confirm'] ?? '';
+        if ($newPw !== $confirmPw) {
+            $_SESSION['flash'] = 'New passwords do not match.';
+            header('Location: ?page=profile', true, 303);
+            exit;
+        }
+        if (updateAccountPassword($pdo, $currentAccountId, $currentPw, $newPw)) {
+            $_SESSION['flash'] = 'Password changed.';
+        } else {
+            $_SESSION['flash'] = 'Current password is incorrect or new password is too short (min 8 chars).';
+        }
+        header('Location: ?page=profile', true, 303);
+        exit;
+
     } else {
         prg_redirect();
     }
@@ -305,4 +495,4 @@ $flash = $_SESSION['flash'] ?? null;
 $_SESSION['flash'] = null;
 $isAdmin = !empty($_SESSION['is_admin']);
 
-render('home', compact('messages', 'q', 'page', 'pages', 'total', 'sort', 'communities', 'activeUsers', 'flash', 'isAdmin'));
+render('home', compact('messages', 'q', 'page', 'pages', 'total', 'sort', 'communities', 'activeUsers', 'flash', 'isAdmin', 'currentAccount', 'currentAccountId'));

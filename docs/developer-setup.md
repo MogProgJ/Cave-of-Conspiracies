@@ -61,6 +61,7 @@ mysql -u root playground < migrations/2025_10_27_messages.sql
 mysql -u root playground < migrations/2025_10_28_comments.sql
 mysql -u root playground < migrations/2025_10_29_social_tables.sql
 mysql -u root playground < migrations/2025_10_30_moderation.sql
+mysql -u root playground < migrations/2025_10_31_accounts.sql
 ```
 
 There is no migration runner script yet. Apply manually.
