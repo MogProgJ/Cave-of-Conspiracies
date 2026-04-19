@@ -1,22 +1,28 @@
-/* assets/animations.css */
+/* =================================================================
+   Cave of Conspiracies — Animations & Motion
+   ================================================================= */
 
 :root {
-  --toast-transition: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Toast notifications */
 
 .toast {
   position: fixed;
   left: 50%;
-  top: 18px;
-  transform: translate(-50%, -12px) scale(0.92);
-  padding: 10px 16px;
+  top: 20px;
+  transform: translate(-50%, -16px) scale(0.95);
+  padding: 12px 20px;
   border-radius: 12px;
   font-weight: 600;
+  font-size: 0.875rem;
   letter-spacing: 0.2px;
   opacity: 0;
   pointer-events: none;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-  transition: opacity 200ms var(--toast-transition), transform 200ms var(--toast-transition);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out);
   z-index: 9999;
 }
 
@@ -35,10 +41,12 @@
   color: #2d0505;
 }
 
+/* Reveal on scroll */
+
 .reveal {
   opacity: 0;
-  transform: translateY(18px);
-  transition: opacity 300ms ease, transform 360ms ease;
+  transform: translateY(20px);
+  transition: opacity 400ms var(--ease-out), transform 500ms var(--ease-out);
 }
 
 .reveal.show {
@@ -46,11 +54,15 @@
   transform: translateY(0);
 }
 
+/* Message focus / hover glow */
+
 .msg--focused {
-  box-shadow: 0 18px 40px rgba(18, 22, 28, 0.45);
-  transform: translateY(-2px);
-  transition: transform 160ms ease, box-shadow 200ms ease;
+  border-color: var(--border-light, #2a3345) !important;
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,.3)), 0 0 30px var(--brand-glow, rgba(124,92,255,.08));
+  transform: translateY(-1px);
 }
+
+/* Ambient background layer */
 
 #ambientCanvas {
   position: fixed;
@@ -63,47 +75,49 @@
 .ambient-bubble {
   position: absolute;
   display: block;
-  border-radius: 999px;
-  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0));
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(124, 92, 255, 0.2), transparent 70%);
   mix-blend-mode: screen;
-  opacity: 0.16;
-  filter: blur(0.5px);
+  opacity: 0.12;
+  filter: blur(2px);
+  will-change: transform;
 }
 
-.ambient-bubble--1 { opacity: 0.22; }
-.ambient-bubble--2 { opacity: 0.18; }
+.ambient-bubble--0 { opacity: 0.15; background: radial-gradient(circle, rgba(124, 92, 255, 0.18), transparent 70%); }
+.ambient-bubble--1 { opacity: 0.1; background: radial-gradient(circle, rgba(114, 230, 255, 0.14), transparent 70%); }
+.ambient-bubble--2 { opacity: 0.08; background: radial-gradient(circle, rgba(200, 180, 255, 0.1), transparent 70%); }
+
+/* Community ticker */
 
 [data-community-ticker] {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
 }
 
 [data-community-ticker] li {
   list-style: none;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 240ms ease, transform 240ms ease;
+  transition: opacity 300ms var(--ease-out);
 }
 
-[data-community-ticker] li.is-active {
-  opacity: 1;
-  transform: translateY(0);
-}
+/* Character count warning */
 
 .count-limit {
   color: #facc15;
 }
+
+/* Reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
   .reveal,
   .toast,
   .msg--focused,
   [data-community-ticker] li {
-    transition: none;
+    transition: none !important;
     transform: none !important;
   }
 
-  #ambientCanvas {
-    display: none;
-  }
+  .reveal { opacity: 1; }
+
+  #ambientCanvas { display: none; }
 }

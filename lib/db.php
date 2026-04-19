@@ -544,6 +544,20 @@ function getPublicProfile(PDO $pdo, int $accountId): ?array {
   return $account;
 }
 
+function getRecentCommentsByAccount(PDO $pdo, int $accountId, int $limit = 10): array {
+  $stmt = $pdo->prepare(
+    "SELECT c.id, c.body, c.created_at, c.message_id,
+            m.body AS message_body
+     FROM comments c
+     LEFT JOIN messages m ON m.id = c.message_id
+     WHERE c.account_id = ? AND c.status = 'visible'
+     ORDER BY c.created_at DESC
+     LIMIT ?"
+  );
+  $stmt->execute([$accountId, $limit]);
+  return $stmt->fetchAll();
+}
+
 function getRecentPostsByAccount(PDO $pdo, int $accountId, int $limit = 10): array {
   $stmt = $pdo->prepare(
     "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes,

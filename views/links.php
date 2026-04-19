@@ -1,15 +1,24 @@
-<!doctype html><meta charset="utf-8"><title>Links · Cave of Conspiracies</title>
-<link href="assets/styles.css" rel="stylesheet">
-<div class="container">
-  <header class="header">
-    <div class="brand"><div class="brand-badge">CoC</div><h1>Links</h1></div>
-    <a class="btn-outline" href="/myApp">Home</a>
-  </header>
-  <div class="card"><h2>Socials</h2>
+<?php
+$pageTitle = 'Socials — Cave of Conspiracies';
+include __DIR__ . '/partials/head.php';
+include __DIR__ . '/partials/site_header.php';
+?>
+
+<div class="static-page">
+  <div class="card reveal">
+    <h2>Socials &amp; Links</h2>
+    <p>Stay connected with the Cave of Conspiracies community.</p>
     <ul>
-      <li><a href="#" target="_blank">Twitter/X</a></li>
-      <li><a href="#" target="_blank">Instagram</a></li>
-      <li><a href="#" target="_blank">GitHub</a></li>
+      <li><strong>GitHub</strong> &mdash; <a href="#">Source code &amp; contributions</a></li>
+      <li><strong>Discord</strong> &mdash; <a href="#">Join the discussion</a></li>
+      <li><strong>Twitter / X</strong> &mdash; <a href="#">Updates &amp; announcements</a></li>
     </ul>
+    <p class="muted">Links will be updated as the project grows.</p>
+    <p><a href="/">Back to the cave</a></p>
   </div>
 </div>
+
+<?php
+$pageScripts = [];
+include __DIR__ . '/partials/footer.php';
+?>

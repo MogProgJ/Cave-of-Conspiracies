@@ -1,11 +1,25 @@
-<!doctype html><meta charset="utf-8"><title>Privacy · Cave of Conspiracies</title>
-<link href="assets/styles.css" rel="stylesheet">
-<div class="container">
-  <header class="header">
-    <div class="brand"><div class="brand-badge">CoC</div><h1>Privacy</h1></div>
-    <a class="btn-outline" href="/myApp">Home</a>
-  </header>
-  <div class="card"><h2>Privacy</h2>
-    <p class="helper">This is a learning app; don’t post private info. Content may be cleared anytime.</p>
+<?php
+$pageTitle = 'Privacy — Cave of Conspiracies';
+include __DIR__ . '/partials/head.php';
+include __DIR__ . '/partials/site_header.php';
+?>
+
+<div class="static-page">
+  <div class="card reveal">
+    <h2>Privacy Policy</h2>
+    <p>Cave of Conspiracies respects your privacy. Here is what we collect and why:</p>
+    <ul>
+      <li><strong>Session data</strong> &mdash; We use server-side sessions to track anonymous ownership of posts and manage logins. No third-party cookies.</li>
+      <li><strong>Account data</strong> &mdash; If you register, we store your email (hashed password) and display name. This is never shared.</li>
+      <li><strong>Posts and comments</strong> &mdash; Content you submit is stored in our database and visible to other users. You can delete your own posts.</li>
+      <li><strong>IP addresses</strong> &mdash; We may log IP addresses for rate limiting and abuse prevention. These are not shared publicly.</li>
+    </ul>
+    <p>We do not run analytics, sell data, or use tracking pixels. This is a simple community board, not an ad platform.</p>
+    <p><a href="/">Back to the cave</a></p>
   </div>
 </div>
+
+<?php
+$pageScripts = [];
+include __DIR__ . '/partials/footer.php';
+?>

@@ -101,12 +101,17 @@ if ($pageName === 'profile') {
         header('Location: ?page=login', true, 303);
         exit;
     }
-    $profileAccount = getAccountById($pdo, $currentAccountId);
-    $profilePosts   = getRecentPostsByAccount($pdo, $currentAccountId, 20);
+    $profileAccount  = getAccountById($pdo, $currentAccountId);
+    $publicData      = getPublicProfile($pdo, $currentAccountId);
+    $profileAccount['post_count']    = $publicData['post_count'] ?? 0;
+    $profileAccount['comment_count'] = $publicData['comment_count'] ?? 0;
+    $profilePosts    = getRecentPostsByAccount($pdo, $currentAccountId, 20);
+    $profileComments = getRecentCommentsByAccount($pdo, $currentAccountId, 10);
     render('profile', [
-        'account'   => $profileAccount,
-        'posts'     => $profilePosts,
-        'is_own'    => true,
+        'account'        => $profileAccount,
+        'posts'          => $profilePosts,
+        'recentComments' => $profileComments,
+        'is_own'         => true,
     ]);
     exit;
 }
@@ -125,11 +130,13 @@ if ($pageName === 'user') {
         render('404', []);
         exit;
     }
-    $profilePosts = getRecentPostsByAccount($pdo, $userId, 20);
+    $profilePosts    = getRecentPostsByAccount($pdo, $userId, 20);
+    $profileComments = getRecentCommentsByAccount($pdo, $userId, 10);
     render('profile', [
-        'account'   => $profileData,
-        'posts'     => $profilePosts,
-        'is_own'    => ($currentAccountId === $userId),
+        'account'        => $profileData,
+        'posts'          => $profilePosts,
+        'recentComments' => $profileComments,
+        'is_own'         => ($currentAccountId === $userId),
     ]);
     exit;
 }

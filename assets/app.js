@@ -57,35 +57,41 @@ document.addEventListener('DOMContentLoaded', () => {
           '<span class="badge">' + escapeHtml(m.nickname) + '</span>' +
           '<span class="community-tag">r/' + escapeHtml(m.community_name || 'General') + '</span>' +
           '<span class="time">' + escapeHtml(m.created_at) + '</span>' +
-          '<form method="post" action="" class="actions" style="margin-left:auto;">' +
-            '<input type="hidden" name="id" value="' + m.id + '">' +
-            '<input type="hidden" name="type" value="up">' +
-            '<input type="hidden" name="action" value="react">' +
-            '<input type="hidden" name="csrf" value="' + csrf + '">' +
-            '<button class="btn-outline" data-react="up" data-id="' + m.id + '">&#9650; <span id="up_' + m.id + '">' + (m.upvotes || 0) + '</span></button>' +
-          '</form>' +
-          '<form method="post" action="" class="actions">' +
-            '<input type="hidden" name="id" value="' + m.id + '">' +
-            '<input type="hidden" name="type" value="down">' +
-            '<input type="hidden" name="action" value="react">' +
-            '<input type="hidden" name="csrf" value="' + csrf + '">' +
-            '<button class="btn-outline" data-react="down" data-id="' + m.id + '">&#9660; <span id="down_' + m.id + '">' + (m.downvotes || 0) + '</span></button>' +
-          '</form>' +
-          (m.is_owner
-            ? '<button class="btn-danger" data-delete data-id="' + m.id + '" data-snippet="' + escapeHtml((m.body || '').substring(0, 60)) + '">Delete</button>'
-            : '') +
-          '<button class="btn-outline btn-report" data-report data-target-type="message" data-target-id="' + m.id + '" title="Report this post">&#9873;</button>' +
         '</div>' +
-        '<p>' + nl2br(escapeHtml(m.body)) + '</p>' +
+        '<div class="msg-body"><p>' + nl2br(escapeHtml(m.body)) + '</p></div>' +
+        '<div class="msg-actions">' +
+          '<div class="msg-votes">' +
+            '<form method="post" action="" class="actions">' +
+              '<input type="hidden" name="id" value="' + m.id + '">' +
+              '<input type="hidden" name="type" value="up">' +
+              '<input type="hidden" name="action" value="react">' +
+              '<input type="hidden" name="csrf" value="' + csrf + '">' +
+              '<button data-react="up" data-id="' + m.id + '">&#9650; <span id="up_' + m.id + '">' + (m.upvotes || 0) + '</span></button>' +
+            '</form>' +
+            '<form method="post" action="" class="actions">' +
+              '<input type="hidden" name="id" value="' + m.id + '">' +
+              '<input type="hidden" name="type" value="down">' +
+              '<input type="hidden" name="action" value="react">' +
+              '<input type="hidden" name="csrf" value="' + csrf + '">' +
+              '<button data-react="down" data-id="' + m.id + '">&#9660; <span id="down_' + m.id + '">' + (m.downvotes || 0) + '</span></button>' +
+            '</form>' +
+          '</div>' +
+          '<div class="msg-controls">' +
+            (m.is_owner
+              ? '<button class="btn-danger" data-delete data-id="' + m.id + '" data-snippet="' + escapeHtml((m.body || '').substring(0, 60)) + '">Delete</button>'
+              : '') +
+            '<button class="btn-report" data-report data-target-type="message" data-target-id="' + m.id + '" title="Report this post">&#9873; Report</button>' +
+          '</div>' +
+        '</div>' +
         '<section class="comments" data-message="' + m.id + '">' +
           '<h3 class="comments-title">Comments</h3>' +
           '<div class="comments-list" id="comments_' + m.id + '">' + emptyNote + cs + '</div>' +
           '<form method="post" action="" class="comment-form" data-message-id="' + m.id + '">' +
             '<div class="row">' +
               nickField +
-              '<button class="btn-outline">Comment</button>' +
+              '<button class="btn-outline btn-sm">Comment</button>' +
             '</div>' +
-            '<textarea name="body" placeholder="Share your take..." maxlength="240" required rows="3"></textarea>' +
+            '<textarea name="body" placeholder="Share your take..." maxlength="240" required rows="2"></textarea>' +
             '<input type="hidden" name="csrf" value="' + csrf + '">' +
             '<input type="hidden" name="message_id" value="' + m.id + '">' +
             '<input type="hidden" name="action" value="comment">' +
@@ -113,23 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     listEl.insertAdjacentHTML('beforeend', commentHtml);
   }
 
-  // -- Theme --
-
-  var picker = document.getElementById('themePicker');
-  var savedTheme = (function () {
-    try { return localStorage.getItem('theme'); } catch (e) { return null; }
-  })() || 'dark';
-
-  function setTheme(t) {
-    document.body.setAttribute('data-theme', t);
-    try { localStorage.setItem('theme', t); } catch (e) { /* noop */ }
-  }
-
-  setTheme(savedTheme);
-  if (picker) {
-    picker.value = savedTheme;
-    picker.addEventListener('change', function () { setTheme(picker.value); });
-  }
+  // Theme initialization is handled by dynamic-interface.js (loaded on all pages)
 
   // -- Button ripple --
 

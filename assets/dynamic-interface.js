@@ -1,13 +1,40 @@
 // assets/dynamic-interface.js
-// Dedicated to light-weight visual polish and motion separated from core logic.
+// Visual polish, theme handler, and ambient motion — separate from core logic.
 
 document.addEventListener('DOMContentLoaded', () => {
-  const doc = document;
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // -- Theme picker handler --
+
+  function initTheme() {
+    const picker = document.getElementById('themePicker');
+    const saved = (() => {
+      try { return localStorage.getItem('theme'); } catch (e) { return null; }
+    })() || 'dark';
+
+    document.body.setAttribute('data-theme', saved);
+
+    if (picker) {
+      picker.value = saved;
+      picker.addEventListener('change', () => {
+        const t = picker.value;
+        document.body.setAttribute('data-theme', t);
+        try { localStorage.setItem('theme', t); } catch (e) { /* noop */ }
+      });
+    }
+  }
+
+  // -- Reveal on scroll --
+
   function initReveal() {
-    const revealEls = doc.querySelectorAll('.reveal');
-    if (!revealEls.length) return;
+    const els = document.querySelectorAll('.reveal');
+    if (!els.length) return;
+
+    if (prefersReducedMotion) {
+      els.forEach(el => el.classList.add('show'));
+      return;
+    }
+
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
@@ -15,83 +42,93 @@ document.addEventListener('DOMContentLoaded', () => {
           observer.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.12 });
-    revealEls.forEach((el) => observer.observe(el));
+    }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+    els.forEach(el => observer.observe(el));
   }
 
-  function initAmbientBackground() {
+  // -- Ambient glow particles --
+
+  function initAmbient() {
     if (prefersReducedMotion) return;
-    const host = doc.createElement('div');
+
+    const host = document.createElement('div');
     host.id = 'ambientCanvas';
     host.setAttribute('aria-hidden', 'true');
     document.body.appendChild(host);
 
-    const bubbles = Array.from({ length: 6 }, (_, index) => {
-      const bubble = doc.createElement('span');
-      bubble.className = `ambient-bubble ambient-bubble--${index % 3}`;
-      host.appendChild(bubble);
+    const particles = Array.from({ length: 4 }, (_, i) => {
+      const el = document.createElement('span');
+      el.className = `ambient-bubble ambient-bubble--${i % 3}`;
+      host.appendChild(el);
       return {
-        el: bubble,
+        el,
         x: Math.random() * window.innerWidth,
         y: Math.random() * window.innerHeight,
-        r: 40 + Math.random() * 120,
-        dx: (Math.random() * 0.4 + 0.1) * (Math.random() > 0.5 ? 1 : -1),
-        dy: (Math.random() * 0.4 + 0.1) * (Math.random() > 0.5 ? 1 : -1)
+        r: 80 + Math.random() * 200,
+        dx: (Math.random() * 0.2 + 0.05) * (Math.random() > 0.5 ? 1 : -1),
+        dy: (Math.random() * 0.2 + 0.05) * (Math.random() > 0.5 ? 1 : -1),
       };
     });
 
     function tick() {
-      for (const bubble of bubbles) {
-        bubble.x += bubble.dx;
-        bubble.y += bubble.dy;
-        if (bubble.x < -bubble.r || bubble.x > window.innerWidth + bubble.r) bubble.dx *= -1;
-        if (bubble.y < -bubble.r || bubble.y > window.innerHeight + bubble.r) bubble.dy *= -1;
-        bubble.el.style.transform = `translate(${bubble.x}px, ${bubble.y}px)`;
-        bubble.el.style.width = `${bubble.r}px`;
-        bubble.el.style.height = `${bubble.r}px`;
+      for (const p of particles) {
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.x < -p.r || p.x > window.innerWidth + p.r) p.dx *= -1;
+        if (p.y < -p.r || p.y > window.innerHeight + p.r) p.dy *= -1;
+        p.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+        p.el.style.width = `${p.r}px`;
+        p.el.style.height = `${p.r}px`;
       }
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
 
     window.addEventListener('resize', () => {
-      bubbles.forEach((bubble) => {
-        bubble.x = Math.min(Math.max(bubble.x, 0), window.innerWidth);
-        bubble.y = Math.min(Math.max(bubble.y, 0), window.innerHeight);
+      particles.forEach(p => {
+        p.x = Math.min(Math.max(p.x, 0), window.innerWidth);
+        p.y = Math.min(Math.max(p.y, 0), window.innerHeight);
       });
     });
   }
 
+  // -- Message hover glow --
+
   function initHoverFocus() {
-    const list = doc.getElementById('messageList');
+    const list = document.getElementById('messageList');
     if (!list) return;
-    list.addEventListener('pointerenter', (event) => {
-      const article = event.target.closest('.msg');
-      if (!article) return;
-      article.classList.add('msg--focused');
+    list.addEventListener('pointerenter', (e) => {
+      const msg = e.target.closest('.msg');
+      if (msg) msg.classList.add('msg--focused');
     }, true);
-    list.addEventListener('pointerleave', (event) => {
-      const article = event.target.closest('.msg');
-      if (!article) return;
-      article.classList.remove('msg--focused');
+    list.addEventListener('pointerleave', (e) => {
+      const msg = e.target.closest('.msg');
+      if (msg) msg.classList.remove('msg--focused');
     }, true);
   }
+
+  // -- Community ticker rotation --
 
   function initTicker() {
-    const ticker = doc.querySelector('[data-community-ticker]');
+    const ticker = document.querySelector('[data-community-ticker]');
     if (!ticker || prefersReducedMotion) return;
-    let index = 0;
     const items = ticker.querySelectorAll('li');
     if (!items.length) return;
+    let index = 0;
 
+    items.forEach(item => item.classList.add('is-active'));
     setInterval(() => {
-      items.forEach((item, i) => item.classList.toggle('is-active', i === index));
+      items.forEach((item, i) => {
+        item.style.opacity = i === index ? '1' : '0.5';
+      });
       index = (index + 1) % items.length;
-    }, 3200);
+    }, 3000);
   }
 
+  initTheme();
   initReveal();
-  initAmbientBackground();
+  initAmbient();
   initHoverFocus();
   initTicker();
 });
