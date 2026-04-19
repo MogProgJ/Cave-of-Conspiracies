@@ -109,13 +109,13 @@ function recordCommunityActivity(PDO $pdo, int $communityId, string $kind): void
   ]);
 }
 
-function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug = null): ?int {
+function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug = null, string $ownerToken = ''): ?int {
   $body = mb_substr(trim($body), 0, 240);
   if ($body === '') {
     return null;
   }
-  $stmt = $pdo->prepare('INSERT INTO messages(user_id, body) VALUES (?, ?)');
-  $stmt->execute([$userId, $body]);
+  $stmt = $pdo->prepare('INSERT INTO messages(user_id, body, owner_token) VALUES (?, ?, ?)');
+  $stmt->execute([$userId, $body, $ownerToken]);
   $messageId = (int)$pdo->lastInsertId();
   recordUserActivity($pdo, $userId, 'message');
   assignMessageToCommunity($pdo, $messageId, $communitySlug);
@@ -132,43 +132,13 @@ function countMessages(PDO $pdo, string $q): int {
   return (int)$stmt->fetch()['c'];
 }
 
-function listMessagesBasic(PDO $pdo, string $q, int $limit, int $offset): array {
-  $q = trim($q);
-  if ($q === '') {
-    $sql = 'SELECT m.id, m.body, m.created_at, u.nickname,
-                   c.name AS community_name, c.slug AS community_slug
-            FROM messages m
-            JOIN users u ON u.id = m.user_id
-            LEFT JOIN message_topics mt ON mt.message_id = m.id
-            LEFT JOIN communities c ON c.id = mt.community_id
-            ORDER BY m.id DESC
-            LIMIT :limit OFFSET :offset';
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-    $stmt->execute();
-    return $stmt->fetchAll();
+function deleteMessage(PDO $pdo, int $id, string $ownerToken = ''): bool {
+  if ($id <= 0 || $ownerToken === '') {
+    return false;
   }
-  $sql = 'SELECT m.id, m.body, m.created_at, u.nickname,
-                 c.name AS community_name, c.slug AS community_slug
-          FROM messages m
-          JOIN users u ON u.id = m.user_id
-          LEFT JOIN message_topics mt ON mt.message_id = m.id
-          LEFT JOIN communities c ON c.id = mt.community_id
-          WHERE m.body LIKE :like
-          ORDER BY m.id DESC
-          LIMIT :limit OFFSET :offset';
-  $stmt = $pdo->prepare($sql);
-  $stmt->bindValue(':like', '%' . $q . '%', PDO::PARAM_STR);
-  $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-  $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-  $stmt->execute();
-  return $stmt->fetchAll();
-}
-
-function deleteMessage(PDO $pdo, int $id): void {
-  $stmt = $pdo->prepare('DELETE FROM messages WHERE id = ?');
-  $stmt->execute([$id]);
+  $stmt = $pdo->prepare('DELETE FROM messages WHERE id = ? AND owner_token = ?');
+  $stmt->execute([$id, $ownerToken]);
+  return $stmt->rowCount() > 0;
 }
 
 function reactMessage(PDO $pdo, int $id, string $type): void {
@@ -190,7 +160,8 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
   } elseif ($sort === 'top') {
     $order = ' (CAST(m.upvotes AS SIGNED) - CAST(m.downvotes AS SIGNED)) DESC, m.id DESC';
   }
-  $base = 'SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, u.nickname,
+  $base = 'SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token,
+                  u.nickname,
                   c.name AS community_name, c.slug AS community_slug
            FROM messages m
            JOIN users u ON u.id = m.user_id
@@ -216,7 +187,8 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
 }
 
 function getMessage(PDO $pdo, int $id): ?array {
-  $sql = 'SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, u.nickname,
+  $sql = 'SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token,
+                 u.nickname,
                  c.name AS community_name, c.slug AS community_slug
           FROM messages m
           JOIN users u ON u.id = m.user_id

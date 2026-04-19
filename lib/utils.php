@@ -2,7 +2,11 @@
 declare(strict_types=1);
 
 function render(string $view, array $data = []): void {
-  extract($data, EXTR_SKIP);
+  // Explicit variable assignment — avoids extract() injection risk
+  foreach ($data as $__key => $__val) {
+    $$__key = $__val;
+  }
+  unset($__key, $__val);
   include __DIR__ . "/../views/{$view}.php";
 }
 

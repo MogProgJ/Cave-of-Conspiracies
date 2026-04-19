@@ -1,274 +1,333 @@
-// assets/app.js
+// assets/app.js � single coherent interaction layer for Cave of Conspiracies
 document.addEventListener('DOMContentLoaded', () => {
-  /* ------------------ THEME PICKER (data-theme + localStorage) ------------------ */
-  const picker = document.getElementById('themePicker');
+  'use strict';
 
-  const setTheme = (t) => {
-    document.body.setAttribute('data-theme', t);
-    try { localStorage.setItem('theme', t); } catch {}
-  };
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const saved = (() => {
-    try { return localStorage.getItem('theme'); } catch { return null; }
-  })() || 'dark';
-/* Button ripple position (so ripple starts under cursor) */
-document.addEventListener('pointerdown', (e)=>{
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  const rect = btn.getBoundingClientRect();
-  btn.style.setProperty('--rx', `${e.clientX - rect.left}px`);
-  btn.style.setProperty('--ry', `${e.clientY - rect.top}px`);
-});
+  // -- Helpers --
 
-/* When vote returns, pop + flash the right counter (hook into your existing AJAX) */
-// Find the place where you set upEl/dnEl.textContent after a vote.
-// Immediately after updating numbers, add:
-function animateVote(id, type){
-  const el = document.getElementById(`${type === 'up' ? 'up' : 'down'}_${id}`);
-  if (!el) return;
-  el.classList.remove('count-pop','count-up','count-down');
-  // force reflow to restart animation
-  void el.offsetWidth;
-  el.classList.add('count-pop', type==='up' ? 'count-up' : 'count-down');
-}
-/* AJAX compose: submit without reload, prepend new message with animation */
-const compose = document.getElementById('composeForm');
-if (compose){
-  compose.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const data = new FormData(compose);
-    try{
-      const res = await fetch(location.pathname + location.search, {
-        method: 'POST',
-        headers: { 'X-Requested-With':'fetch' },
-        body: data
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
-      if (!json.ok || !json.message) return;
-
-      // Build the new message HTML (keeps your structure)
-      const m = json.message;
-      const html = `
-        <article class="msg reveal show" id="msg_${m.id}">
-          <div class="msg-head">
-            <span class="badge">${escapeHtml(m.nickname)}</span>
-            <span class="time">${escapeHtml(m.created_at)}</span>
-
-            <form method="post" action="" class="actions" style="margin-left:auto;">
-              <input type="hidden" name="id" value="${m.id}">
-              <input type="hidden" name="type" value="up">
-              <input type="hidden" name="action" value="react">
-              <input type="hidden" name="csrf" value="${document.querySelector('input[name="csrf"]').value}">
-              <button class="btn-outline" data-react="up" data-id="${m.id}">▲ <span id="up_${m.id}">${m.upvotes ?? 0}</span></button>
-            </form>
-            <form method="post" action="" class="actions">
-              <input type="hidden" name="id" value="${m.id}">
-              <input type="hidden" name="type" value="down">
-              <input type="hidden" name="action" value="react">
-              <input type="hidden" name="csrf" value="${document.querySelector('input[name="csrf"]').value}">
-              <button class="btn-outline" data-react="down" data-id="${m.id}">▼ <span id="down_${m.id}">${m.downvotes ?? 0}</span></button>
-            </form>
-            <button class="btn-danger" data-delete data-id="${m.id}" data-snippet="${escapeHtml(m.body).slice(0,60)}">Delete</button>
-          </div>
-          <p>${nl2br(escapeHtml(m.body))}</p>
-        </article>
-      `;
-
-      const listCard = document.querySelector('.card:nth-of-type(2) .msg')?.parentElement // section containing messages
-                    || document.querySelector('.card:nth-of-type(2)'); // fallback
-      const container = listCard?.querySelector('.msg') ? listCard : document.querySelector('.card:nth-of-type(2)');
-
-      const section = container.querySelector('section') || container; // adapt to your markup
-      (section || container).insertAdjacentHTML('afterbegin', html);
-
-      // reset composer + little toast
-      compose.reset();
-      const hint = document.getElementById('countHint'); if (hint) hint.textContent = '0 / 240';
-      showToast('Posted!');
-
-    }catch(err){
-      console.error('Add failed:', err);
-      showToast('Could not post', true);
-    }
-  });
-}
-
-// helpers for HTML injection
-function escapeHtml(s=''){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-function nl2br(s=''){ return s.replace(/\n/g,'<br>'); }
-
-// tiny toast
-function showToast(text, danger=false){
-  const t = document.createElement('div');
-  t.textContent = text;
-  t.style.cssText = `
-    position:fixed; left:50%; top:18px; transform:translateX(-50%);
-    background:${danger?'rgba(255,107,107,.95)':'rgba(61,220,151,.95)'};
-    color:#0b0d12; padding:10px 14px; border-radius:10px; z-index:9999; box-shadow:0 10px 30px rgba(0,0,0,.35);
-  `;
-  document.body.appendChild(t);
-  setTimeout(()=>{ t.style.transition='opacity .4s'; t.style.opacity='0'; setTimeout(()=>t.remove(), 400); }, 900);
-}
-
-  setTheme(saved);
-  if (picker) {
-    picker.value = savedTheme;
-    picker.addEventListener('change', () => setTheme(picker.value));
-  }
-
-  // Button ripple anchor (only runs when not reduced motion)
-  if (!prefersReducedMotion) {
-    doc.addEventListener('pointerdown', (event) => {
-      const button = event.target.closest('button');
-      if (!button) return;
-      const rect = button.getBoundingClientRect();
-      button.style.setProperty('--rx', `${event.clientX - rect.left}px`);
-      button.style.setProperty('--ry', `${event.clientY - rect.top}px`);
-    }, { passive: true });
-  }
-
-  // Composer AJAX submit
-  const composer = doc.getElementById('composerForm');
-  if (composer) {
-    composer.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const data = new FormData(composer);
-      try {
-        const response = await fetch(location.pathname + location.search, {
-          method: 'POST',
-          headers: { 'X-Requested-With': 'fetch' },
-          body: data
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const payload = await response.json();
-        if (!payload.ok || !payload.message) return;
-
-        const messageList = doc.getElementById('messageList');
-        if (messageList) {
-          payload.message.comments = payload.message.comments || [];
-          messageList.insertAdjacentHTML('afterbegin', renderMessage(payload.message));
-          const empty = messageList.querySelector('.msg-empty');
-          if (empty) empty.remove();
-        }
-
-        composer.reset();
-        const hint = doc.getElementById('countHint');
-        if (hint) hint.textContent = '0 / 240';
-        showToast('Posted!');
-      } catch (error) {
-        console.error('Add failed:', error);
-        showToast('Could not post', true);
-      }
+  function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/[&<>"']/g, function (m) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
     });
   }
 
-  // Comment submission (delegated)
-  doc.addEventListener('submit', async (event) => {
-    const form = event.target;
-    if (!(form instanceof HTMLFormElement) || !form.classList.contains('comment-form')) {
-      return;
-    }
-    event.preventDefault();
+  function nl2br(s) {
+    if (!s) return '';
+    return s.replace(/\n/g, '<br>');
+  }
 
-    const data = new FormData(form);
-    const body = (data.get('body') || '').toString().trim();
+  function showToast(text, danger) {
+    var t = document.createElement('div');
+    t.className = 'toast' + (danger ? ' toast--danger' : '');
+    t.textContent = text;
+    t.style.cssText =
+      'position:fixed;left:50%;top:18px;transform:translateX(-50%);' +
+      'background:' + (danger ? 'rgba(255,107,107,.95)' : 'rgba(61,220,151,.95)') + ';' +
+      'color:#0b0d12;padding:10px 14px;border-radius:10px;z-index:9999;' +
+      'box-shadow:0 10px 30px rgba(0,0,0,.35);';
+    document.body.appendChild(t);
+    setTimeout(function () {
+      t.style.transition = 'opacity .4s';
+      t.style.opacity = '0';
+      setTimeout(function () { t.remove(); }, 400);
+    }, 1800);
+  }
+
+  function csrfValue() {
+    var el = document.querySelector('input[name="csrf"]');
+    return el ? el.value : '';
+  }
+
+  function renderMessage(m) {
+    var cs = (m.comments || []).map(renderComment).join('');
+    var emptyNote = cs ? '' : '<p class="comment-empty muted">No comments yet.</p>';
+    var csrf = csrfValue();
+    return (
+      '<article class="msg reveal show" id="msg_' + m.id + '" data-community="' + escapeHtml(m.community_slug || 'general') + '">' +
+        '<div class="msg-head">' +
+          '<span class="badge">' + escapeHtml(m.nickname) + '</span>' +
+          '<span class="community-tag">r/' + escapeHtml(m.community_name || 'General') + '</span>' +
+          '<span class="time">' + escapeHtml(m.created_at) + '</span>' +
+          '<form method="post" action="" class="actions" style="margin-left:auto;">' +
+            '<input type="hidden" name="id" value="' + m.id + '">' +
+            '<input type="hidden" name="type" value="up">' +
+            '<input type="hidden" name="action" value="react">' +
+            '<input type="hidden" name="csrf" value="' + csrf + '">' +
+            '<button class="btn-outline" data-react="up" data-id="' + m.id + '">&#9650; <span id="up_' + m.id + '">' + (m.upvotes || 0) + '</span></button>' +
+          '</form>' +
+          '<form method="post" action="" class="actions">' +
+            '<input type="hidden" name="id" value="' + m.id + '">' +
+            '<input type="hidden" name="type" value="down">' +
+            '<input type="hidden" name="action" value="react">' +
+            '<input type="hidden" name="csrf" value="' + csrf + '">' +
+            '<button class="btn-outline" data-react="down" data-id="' + m.id + '">&#9660; <span id="down_' + m.id + '">' + (m.downvotes || 0) + '</span></button>' +
+          '</form>' +
+          (m.is_owner
+            ? '<button class="btn-danger" data-delete data-id="' + m.id + '" data-snippet="' + escapeHtml((m.body || '').substring(0, 60)) + '">Delete</button>'
+            : '') +
+        '</div>' +
+        '<p>' + nl2br(escapeHtml(m.body)) + '</p>' +
+        '<section class="comments" data-message="' + m.id + '">' +
+          '<h3 class="comments-title">Comments</h3>' +
+          '<div class="comments-list" id="comments_' + m.id + '">' + emptyNote + cs + '</div>' +
+          '<form method="post" action="" class="comment-form" data-message-id="' + m.id + '">' +
+            '<div class="row">' +
+              '<input type="text" name="nick" placeholder="Alias" maxlength="60" required>' +
+              '<button class="btn-outline">Comment</button>' +
+            '</div>' +
+            '<textarea name="body" placeholder="Share your take..." maxlength="240" required rows="3"></textarea>' +
+            '<input type="hidden" name="csrf" value="' + csrf + '">' +
+            '<input type="hidden" name="message_id" value="' + m.id + '">' +
+            '<input type="hidden" name="action" value="comment">' +
+          '</form>' +
+        '</section>' +
+      '</article>'
+    );
+  }
+
+  function renderComment(c) {
+    return (
+      '<article class="comment" data-comment-id="' + c.id + '">' +
+        '<header class="comment-head">' +
+          '<span class="badge badge-comment">' + escapeHtml(c.nickname) + '</span>' +
+          '<span class="time">' + escapeHtml(c.created_at) + '</span>' +
+        '</header>' +
+        '<p>' + nl2br(escapeHtml(c.body)) + '</p>' +
+      '</article>'
+    );
+  }
+
+  function hydrateCommentList(listEl, commentHtml) {
+    var empty = listEl.querySelector('.comment-empty');
+    if (empty) empty.remove();
+    listEl.insertAdjacentHTML('beforeend', commentHtml);
+  }
+
+  // -- Theme --
+
+  var picker = document.getElementById('themePicker');
+  var savedTheme = (function () {
+    try { return localStorage.getItem('theme'); } catch (e) { return null; }
+  })() || 'dark';
+
+  function setTheme(t) {
+    document.body.setAttribute('data-theme', t);
+    try { localStorage.setItem('theme', t); } catch (e) { /* noop */ }
+  }
+
+  setTheme(savedTheme);
+  if (picker) {
+    picker.value = savedTheme;
+    picker.addEventListener('change', function () { setTheme(picker.value); });
+  }
+
+  // -- Button ripple --
+
+  if (!prefersReducedMotion) {
+    document.addEventListener('pointerdown', function (e) {
+      var btn = e.target.closest('button');
+      if (!btn) return;
+      var rect = btn.getBoundingClientRect();
+      btn.style.setProperty('--rx', (e.clientX - rect.left) + 'px');
+      btn.style.setProperty('--ry', (e.clientY - rect.top) + 'px');
+    }, { passive: true });
+  }
+
+  // -- Composer AJAX submit --
+
+  var composerForm = document.getElementById('composerForm');
+  if (composerForm) {
+    composerForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = new FormData(composerForm);
+      fetch(location.pathname + location.search, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'fetch' },
+        body: data
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error('Server error ' + res.status);
+        return res.json();
+      })
+      .then(function (json) {
+        if (!json.ok || !json.message) {
+          showToast(json.error || 'Could not post', true);
+          return;
+        }
+        var messageList = document.getElementById('messageList');
+        if (messageList) {
+          var empty = messageList.querySelector('.msg-empty');
+          if (empty) empty.remove();
+          messageList.insertAdjacentHTML('afterbegin', renderMessage(json.message));
+        }
+        composerForm.reset();
+        var hint = document.getElementById('countHint');
+        if (hint) hint.textContent = '0 / 240';
+        showToast('Posted!');
+      })
+      .catch(function (err) {
+        console.error('Add failed:', err);
+        showToast('Could not post', true);
+      });
+    });
+  }
+
+  // -- Comment submission (delegated) --
+
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.classList || !form.classList.contains('comment-form')) return;
+    e.preventDefault();
+
+    var data = new FormData(form);
+    var body = (data.get('body') || '').toString().trim();
     if (!body) {
       showToast('Comment cannot be empty', true);
       return;
     }
 
-    const button = form.querySelector('button');
-    if (button) button.disabled = true;
+    var btn = form.querySelector('button');
+    if (btn) btn.disabled = true;
 
-    try {
-      const response = await fetch(location.pathname + location.search, {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'fetch' },
-        body: data
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const payload = await response.json();
-      if (!payload.ok || !payload.comment) throw new Error(payload.error || 'Unable to save comment');
-      const list = form.closest('.comments')?.querySelector('.comments-list');
-      if (list) hydrateCommentList(list, renderComment(payload.comment));
-      const textarea = form.querySelector('textarea[name="body"]');
-      if (textarea) textarea.value = '';
+    fetch(location.pathname + location.search, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'fetch' },
+      body: data
+    })
+    .then(function (res) {
+      if (!res.ok) throw new Error('Server error ' + res.status);
+      return res.json();
+    })
+    .then(function (json) {
+      if (!json.ok || !json.comment) throw new Error(json.error || 'Unable to save comment');
+      var list = form.closest('.comments');
+      var listEl = list ? list.querySelector('.comments-list') : null;
+      if (listEl) hydrateCommentList(listEl, renderComment(json.comment));
+      var ta = form.querySelector('textarea[name="body"]');
+      if (ta) ta.value = '';
       showToast('Comment posted!');
-    } catch (error) {
-      console.error('Comment failed:', error);
+    })
+    .catch(function (err) {
+      console.error('Comment failed:', err);
       showToast('Could not post comment', true);
-    } finally {
-      if (button) button.disabled = false;
+    })
+    .finally(function () {
+      if (btn) btn.disabled = false;
+    });
+  });
+
+  // -- Voting (delegated) --
+
+  document.addEventListener('click', function (e) {
+    var button = e.target.closest('button[data-react]');
+    if (!button) return;
+    e.preventDefault();
+    var form = button.closest('form');
+    if (!form) return;
+    var data = new FormData(form);
+    var id = button.dataset.id;
+
+    fetch(location.pathname + location.search, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'fetch' },
+      body: data
+    })
+    .then(function (res) {
+      if (!res.ok) throw new Error('Server error ' + res.status);
+      return res.json();
+    })
+    .then(function (json) {
+      if (!json.ok) return;
+      var upEl = document.getElementById('up_' + id);
+      var downEl = document.getElementById('down_' + id);
+      if (upEl) upEl.textContent = json.upvotes;
+      if (downEl) downEl.textContent = json.downvotes;
+      if (!prefersReducedMotion) {
+        button.animate(
+          [{ transform: 'scale(0.94)' }, { transform: 'scale(1)' }],
+          { duration: 160, easing: 'ease-out' }
+        );
+      }
+    })
+    .catch(function (err) {
+      console.error('Vote failed:', err);
+    });
+  });
+
+  // -- Delete modal --
+
+  var modal = document.getElementById('deleteModal');
+  var modalForm = document.getElementById('deleteForm');
+  var modalMsg = document.getElementById('deletePreview');
+
+  document.addEventListener('click', function (e) {
+    var openBtn = e.target.closest('[data-delete]');
+    if (openBtn && modal && modalForm && modalMsg) {
+      e.preventDefault();
+      modalMsg.textContent = openBtn.dataset.snippet || '';
+      var hidden = modalForm.querySelector('input[name="id"]');
+      if (hidden) hidden.value = openBtn.dataset.id || '';
+      modal.classList.add('open');
+      return;
+    }
+    if (e.target.closest('[data-close]') && modal) {
+      modal.classList.remove('open');
     }
   });
 
-  // Voting (delegated)
-  doc.addEventListener('click', async (event) => {
-    const button = event.target.closest('button[data-react]');
-    if (!button) return;
-    event.preventDefault();
-    const form = button.closest('form');
-    if (!form) return;
-    const data = new FormData(form);
-    const id = button.dataset.id;
+  if (modalForm) {
+    modalForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = new FormData(modalForm);
+      var id = data.get('id');
 
-    try {
-      const response = await fetch(location.pathname + location.search, {
+      fetch(location.pathname + location.search, {
         method: 'POST',
         headers: { 'X-Requested-With': 'fetch' },
         body: data
+      })
+      .then(function (res) {
+        return res.json().then(function (json) { return { status: res.status, body: json }; });
+      })
+      .then(function (result) {
+        if (modal) modal.classList.remove('open');
+        if (result.status === 403 || !result.body.ok) {
+          showToast(result.body.error || 'Not allowed', true);
+          return;
+        }
+        var article = document.getElementById('msg_' + id);
+        if (article) {
+          article.style.transition = 'opacity .3s';
+          article.style.opacity = '0';
+          setTimeout(function () { article.remove(); }, 300);
+        }
+        showToast('Deleted');
+      })
+      .catch(function (err) {
+        if (modal) modal.classList.remove('open');
+        console.error('Delete failed:', err);
+        showToast('Could not delete', true);
       });
-      if (!response.ok) throw new Error(await response.text());
-      const payload = await response.json();
-      if (!payload.ok) return;
-      const upEl = doc.getElementById(`up_${id}`);
-      const downEl = doc.getElementById(`down_${id}`);
-      if (upEl) upEl.textContent = payload.upvotes;
-      if (downEl) downEl.textContent = payload.downvotes;
-      if (!prefersReducedMotion) {
-        button.animate([{ transform: 'scale(0.94)' }, { transform: 'scale(1)' }], { duration: 160, easing: 'ease-out' });
-      }
-    } catch (error) {
-      console.error('Vote failed:', error);
-    }
-  });
-
-  // Delete modal open/close
-  const modal = doc.getElementById('deleteModal');
-  const modalForm = doc.getElementById('deleteForm');
-  const modalMsg = doc.getElementById('deletePreview');
-  doc.addEventListener('click', (event) => {
-    const openButton = event.target.closest('[data-delete]');
-    if (openButton && modal && modalForm && modalMsg) {
-      event.preventDefault();
-      modalMsg.textContent = openButton.dataset.snippet || '';
-      const hidden = modalForm.querySelector('input[name="id"]');
-      if (hidden) hidden.value = openButton.dataset.id || '';
-      modal.classList.add('open');
-    }
-    if (event.target.closest('[data-close]')) {
-      if (modal) modal.classList.remove('open');
-    }
-  });
-
-  // Flash auto-hide
-  const flash = doc.querySelector('.flash');
-  if (flash) setTimeout(() => (flash.style.display = 'none'), 2500);
-
-  // Search helpers
-  const searchInput = doc.querySelector('input[name="q"]');
-  if (searchInput) {
-    const base = location.pathname || '';
-    searchInput.addEventListener('input', () => {
-      if (searchInput.value.trim() === '') location.href = base;
     });
-    searchInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
+  }
+
+  // -- Flash auto-hide --
+
+  var flash = document.querySelector('.flash');
+  if (flash) setTimeout(function () { flash.style.display = 'none'; }, 2500);
+
+  // -- Search clear helper --
+
+  var searchInput = document.querySelector('input[name="q"]');
+  if (searchInput) {
+    var basePath = location.pathname || '';
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
         searchInput.value = '';
-        location.href = base;
+        location.href = basePath;
       }
     });
   }
 });
-

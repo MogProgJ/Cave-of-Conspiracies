@@ -55,6 +55,17 @@ CREATE TABLE IF NOT EXISTS user_activity (
   CONSTRAINT fk_activity_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Ensure owner_token column exists on messages (idempotent for existing installs)
+-- This is a no-op on fresh databases where 2025_10_27_messages.sql already includes the column.
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'messages' AND column_name = 'owner_token');
+SET @ddl = IF(@col_exists = 0,
+  'ALTER TABLE messages ADD COLUMN owner_token VARCHAR(64) NOT NULL DEFAULT \'\', ADD INDEX idx_messages_owner (owner_token)',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 INSERT INTO communities (slug, name, tagline)
 VALUES
   ('general', 'General', 'Open discussion for any conspiracy angle.'),
