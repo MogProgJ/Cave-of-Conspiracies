@@ -11,9 +11,10 @@ session_set_cookie_params([
     'samesite'  => 'Strict',
     'secure'    => $isSecure,
 ]);
-session_start();
+require __DIR__ . '/config.php';
 
-require __DIR__ . '/lib/db.php';
+// session cookie params here, if config.php exposes what is needed
+session_start();
 require __DIR__ . '/lib/utils.php';
 
 // -- Anonymous ownership token (stable per session) --
