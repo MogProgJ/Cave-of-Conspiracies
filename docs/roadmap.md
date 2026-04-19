@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 stabilization is complete. The core slice works: create a post, render threads, vote, comment, delete only your own post.
+Phase 4 (user accounts) is complete. Schema safety hardening is complete. Next focus is automated tests.
 
 ## Landed
 
@@ -39,7 +39,8 @@ This is where we are now. Goals:
 - [x] Align `AGENTS.md` and `setup.sh` with reality
 - [x] Remove accidental vendor/XAMPP/PEAR artifacts
 - [x] Add local dev doctor script (`tools/dev_doctor.php`)
-- [ ] Migration runner script (bash or PHP, applies in filename order)
+- [x] Migration runner script (`tools/migrate.php` — applies pending migrations, tracks in `schema_migrations` table)
+- [x] Schema compatibility check on startup (`lib/schema_check.php` — graceful error page instead of fatal crash)
 - [ ] PHPUnit bootstrap and tests for the 5 core flows
 
 ## After that: hardening

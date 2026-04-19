@@ -259,3 +259,29 @@ fetch('/', {
 2. Themed 404 page renders with "Page Not Found" message and a link back to home.
 
 **Pass:** unknown pages show 404, not a blank screen or PHP error.
+
+---
+
+## 20. Schema safety (graceful startup failure)
+
+1. Temporarily break the schema — e.g., rename the `accounts` table: `ALTER TABLE accounts RENAME TO accounts_bak;`
+2. Reload the home page.
+3. A **Setup Required** page appears (HTTP 503) with:
+   - Database connection status (connected).
+   - List of missing tables/columns (e.g., "Missing table: accounts").
+   - Instructions to run `php tools/migrate.php`.
+4. Restore the table: `ALTER TABLE accounts_bak RENAME TO accounts;`
+5. Reload — normal page loads again.
+
+**Pass:** missing schema produces a helpful error page, not a blank screen or raw PHP fatal.
+
+---
+
+## 21. Migration runner
+
+1. Run `php tools/migrate.php --status` from CLI.
+2. All 5 migrations show as "applied" (or "pending" if not yet run).
+3. Run `php tools/migrate.php` — only pending migrations are applied, already-applied ones are skipped.
+4. Run `php tools/dev_doctor.php` — all checks pass.
+
+**Pass:** migration runner reports status correctly and applies only what's needed.

@@ -38,11 +38,15 @@ All POST actions check for the `X-Requested-With: fetch` header. If present, the
 ### index.php
 
 - Entry point and request router.
+- **Schema guard:** requires `lib/schema_check.php`, verifies DB connection and schema compatibility. If DB is unreachable or tables/columns are missing, renders `views/setup_error.php` with HTTP 503 and exits before any data queries.
 - Starts session. Generates `$_SESSION['author_token']` (64-char hex) on first visit.
+- Tracks logged-in account state: `$_SESSION['account_id']`, `$_SESSION['account']`.
 - Ensures the `general` community exists.
 - Routes static pages: about, creator, links, privacy.
+- Routes auth pages: register, login, profile, user (public profile).
 - Routes admin page: `?page=admin` (requires `$_SESSION['is_admin']`).
-- Handles all POST actions: add, comment, react, delete, report, admin_login, admin_logout, mod_action.
+- Routes unknown pages to `views/404.php`.
+- Handles all POST actions: add, comment, react, delete, report, register, login, logout, update_profile, change_password, admin_login, admin_logout, mod_action.
 - CSRF verification on every POST.
 - DB-backed rate limiting on add, comment, react, report (per hashed IP, configurable).
 - Renders the home page via `render()` with data from `lib/db.php`.
@@ -107,6 +111,26 @@ Key functions:
 - `csrf_token()` — generates/returns session CSRF token.
 - `csrf_field()` — returns hidden input HTML.
 - `csrf_verify($token)` — timing-safe comparison via `hash_equals()`.
+
+### lib/schema_check.php
+
+- `checkSchemaCompatibility(PDO $pdo): array` — returns an empty array if all required tables and columns exist, or an array of human-readable error strings if schema is incomplete.
+- Checks 11 required tables and critical columns (`messages.status`, `messages.account_id`, `messages.owner_token`, `comments.status`, `comments.account_id`).
+- Called once during startup in `index.php`.
+
+### views/setup_error.php
+
+- Standalone error page rendered when the schema guard in `index.php` detects a problem.
+- Expects `$errors` (array of missing-schema strings), `$pdo` (PDO|null), `$DB_HOST`, `$DB_NAME`.
+- Shows connection status, missing schema list, migration runner command, manual migration commands, and link to `docs/developer-setup.md`.
+
+### tools/migrate.php
+
+- CLI migration runner. Scans `migrations/*.sql` in filename order.
+- Maintains a `schema_migrations` tracking table.
+- Applies only pending migrations. Prints pass/fail per file.
+- Flags: `--status` (show status only, no changes), `--fresh` (re-apply all migrations).
+- Exits with code 1 on any failure.
 
 ### views/home.php
 

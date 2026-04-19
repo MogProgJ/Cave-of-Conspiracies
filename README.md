@@ -4,18 +4,23 @@ An anonymous message board for posting short conspiracy theories. No account req
 
 ## Current status
 
-Phase 1 stabilization is complete. Core flows work end-to-end: create post, render threads, vote, comment, delete own post. The app runs locally on PHP's built-in server with MySQL.
+Phase 4 (user accounts) is complete. The app has full anonymous posting, voting, comments, moderation, rate limiting, user accounts with login/register/profiles, and a migration runner. It runs locally on PHP's built-in server with MySQL.
 
 ## Core features
 
 - **Post** — 240-char messages assigned to a community (default: General).
 - **Vote** — per-message upvote / downvote, no per-user deduplication yet.
 - **Comment** — flat comments per message, 240-char limit.
-- **Delete** — session-based ownership; only the poster can delete during the same session.
+- **Delete** — hybrid ownership: session-based for anonymous, persistent for logged-in users.
+- **User accounts** — register/login with email + password (bcrypt). Optional — anonymous posting still works.
+- **Profiles** — editable own profile (display name, bio); public profiles for other users.
 - **Communities** — auto-created on first assignment; sidebar shows 7-day trending activity.
+- **Moderation** — admin panel, content reporting, soft-delete status model, audit logging.
+- **Rate limiting** — DB-backed per-IP rate limits on posts, comments, votes, reports.
 - **Themes** — 5 themes (Dark, Light, Blue, Midnight, Dusk) persisted in localStorage.
 - **Search & sort** — filter by body text, sort by Newest / Oldest / Top.
 - **Pagination** — 10 posts per page.
+- **Schema safety** — startup checks verify DB schema before serving pages; missing migrations show a helpful setup page.
 
 ## Stack
 
@@ -34,8 +39,16 @@ config.php              PDO connection (reads DB_* env vars)
 lib/
   db.php                All database functions (prepared statements)
   utils.php             render(), CSRF helpers
+  schema_check.php      Startup schema compatibility verification
+  schema_check.php      Startup schema compatibility verification
 views/
   home.php              DOM source of truth (composer, threads, sidebar, modal)
+  register.php          Registration page
+  login.php             Login page
+  profile.php           User profile (own + public)
+  admin.php             Admin moderation panel
+  setup_error.php       Startup schema-error page
+  404.php               Themed 404 page
   about.php             Static page
   creator.php           Static page
   links.php             Static page
@@ -50,10 +63,15 @@ migrations/
   2025_10_27_messages.sql
   2025_10_28_comments.sql
   2025_10_29_social_tables.sql
+  2025_10_30_moderation.sql
+  2025_10_31_accounts.sql
+  2025_10_30_moderation.sql
+  2025_10_31_accounts.sql
 data/
   activity_feed.json    Sample community activity snapshot (used by tools/)
 tools/
   dev_doctor.php        Local environment readiness check
+  migrate.php           Migration runner (applies pending SQL in order)
   activity_ingest.py    Load activity snapshots into MySQL
   RealtimeBridge.java   Parse and rank community activity (standalone utility)
 docs/
@@ -87,12 +105,22 @@ CREATE DATABASE IF NOT EXISTS playground
   COLLATE utf8mb4_unicode_ci;
 ```
 
-### 3. Apply migrations (in order)
+### 3. Apply migrations
+
+Use the migration runner (recommended):
+
+```bash
+php tools/migrate.php
+```
+
+Or apply manually in order:
 
 ```bash
 mysql -u root playground < migrations/2025_10_27_messages.sql
 mysql -u root playground < migrations/2025_10_28_comments.sql
 mysql -u root playground < migrations/2025_10_29_social_tables.sql
+mysql -u root playground < migrations/2025_10_30_moderation.sql
+mysql -u root playground < migrations/2025_10_31_accounts.sql
 ```
 
 ### 4. Set environment variables (optional)
@@ -127,24 +155,27 @@ This checks PHP version, required extensions, DB connectivity, and table existen
 
 ## Migration order
 
-Migrations must be applied in filename order. Each is idempotent.
+Migrations must be applied in filename order. Each is idempotent. Use `php tools/migrate.php` to apply all pending migrations automatically.
 
 | # | File | Creates |
 |---|------|---------|
 | 1 | `2025_10_27_messages.sql` | `messages` |
 | 2 | `2025_10_28_comments.sql` | `comments` (FK → messages) |
 | 3 | `2025_10_29_social_tables.sql` | `users`, `communities`, `message_topics`, `community_trends`, `user_profiles`, `user_activity` + seed communities |
+| 4 | `2025_10_30_moderation.sql` | `reports`, `moderation_log`, `rate_limits` + status columns on messages/comments |
+| 5 | `2025_10_31_accounts.sql` | `accounts` + `account_id` columns on messages/comments |
+
+**All 5 migrations are required.** The app checks schema compatibility at startup and will show a setup error page if any tables or columns are missing.
 
 ## Current limitations
 
-- No persistent identity — session-only ownership. Session loss = ownership loss.
-- No rate limiting or spam protection.
+- No email verification on registration.
+- No password reset flow.
 - Aliases are globally unique (collisions block reuse).
 - Votes are not deduplicated per user.
 - No FK from `messages.user_id` → `users.id`.
 - No automated tests.
-- No migration runner; manual apply required.
-- `user_profiles` table exists but is unused.
+- `user_profiles` table exists but is unused (superseded by `accounts.bio`).
 
 ## Documentation
 
@@ -157,10 +188,17 @@ Migrations must be applied in filename order. Each is idempotent.
 
 ## Next phase
 
-Repository truth and reproducibility cleanup is in progress. After that:
-
-- Migration runner script
 - PHPUnit bootstrap and core flow tests
+- Email verification on registration
+- Password reset flow
 - CSRF token rotation
-- Rate limiting
 - FK constraint on `messages.user_id`
+- Vote deduplication per user
+
+## Troubleshooting
+
+**App shows "Setup Required" page:** Run `php tools/migrate.php` to apply pending migrations.
+
+**phpMyAdmin is not loading:** This is a XAMPP/Apache/MySQL service issue, not a project code issue. Ensure MySQL and Apache are both running in the XAMPP Control Panel.
+
+**Blank page or PHP fatal error:** Run `php tools/dev_doctor.php` from CLI to diagnose environment and schema issues.

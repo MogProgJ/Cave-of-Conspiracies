@@ -15,6 +15,29 @@ session_start();
 
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/utils.php';
+require __DIR__ . '/lib/schema_check.php';
+
+// ── Graceful startup: verify DB connection + schema ──────────────────
+if ($pdo === null || $DB_ERROR !== null) {
+    http_response_code(503);
+    $dbConnected  = false;
+    $dbError      = $DB_ERROR ?? 'Unknown connection error';
+    $dbHost       = $DB_HOST;
+    $dbName       = $DB_NAME;
+    $schemaErrors = [];
+    include __DIR__ . '/views/setup_error.php';
+    exit;
+}
+
+$schemaErrors = checkSchemaCompatibility($pdo);
+if ($schemaErrors !== []) {
+    http_response_code(503);
+    $dbConnected = true;
+    $dbHost      = $DB_HOST;
+    $dbName      = $DB_NAME;
+    include __DIR__ . '/views/setup_error.php';
+    exit;
+}
 
 // -- Anonymous ownership token (stable per session) --
 if (empty($_SESSION['author_token'])) {

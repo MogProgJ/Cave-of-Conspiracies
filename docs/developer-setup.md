@@ -56,6 +56,16 @@ CREATE DATABASE IF NOT EXISTS playground
 
 Migrations must be applied in filename order. Each is idempotent (`IF NOT EXISTS`, `ON DUPLICATE KEY`).
 
+**Recommended: use the migration runner:**
+
+```bash
+php tools/migrate.php
+```
+
+This scans `migrations/` in filename order, tracks applied migrations in a `schema_migrations` table, and only runs pending ones. Pass `--status` to see which migrations are applied without changing anything.
+
+Or apply manually:
+
 ```bash
 mysql -u root playground < migrations/2025_10_27_messages.sql
 mysql -u root playground < migrations/2025_10_28_comments.sql
@@ -64,7 +74,7 @@ mysql -u root playground < migrations/2025_10_30_moderation.sql
 mysql -u root playground < migrations/2025_10_31_accounts.sql
 ```
 
-There is no migration runner script yet. Apply manually.
+**All 5 migrations are required.** The app depends on tables and columns from every migration. If any are missing, the app will show a setup error page instead of crashing.
 
 ## Start the dev server
 
@@ -103,8 +113,27 @@ The `setup.sh` script does the same thing but is only a convenience wrapper — 
 
 ## Known setup gaps
 
-- No migration runner. Apply files manually in order.
 - No seed data script. First post must be created through the UI.
 - PHP must have `pdo_mysql` compiled in. Check with `php -m`.
-- If the database doesn't exist, the app will crash on load with a PDO connection error.
 - `setup.sh` does not install PHP or MySQL.
+
+## Schema safety
+
+The app checks database connectivity and schema compatibility at startup. If the database is unreachable or required tables/columns are missing, a **Setup Required** page is shown with:
+
+- Connection status
+- List of missing tables/columns
+- Instructions to run the migration runner
+- Link to this document
+
+This prevents raw SQL fatal errors from reaching the browser.
+
+## Troubleshooting
+
+**App shows "Setup Required" page:** Run `php tools/migrate.php` to apply pending migrations, then reload.
+
+**phpMyAdmin is not loading:** This is a XAMPP/Apache/MySQL service issue, not controlled by project code. Ensure both MySQL and Apache are running in the XAMPP Control Panel.
+
+**`php tools/migrate.php` fails to connect:** Verify MySQL is running. Check `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` environment variables.
+
+**Blank page or PHP fatal:** Run `php tools/dev_doctor.php` for a detailed environment and schema check.
