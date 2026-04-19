@@ -1,9 +1,18 @@
 <?php
 declare(strict_types=1);
 
+require __DIR__ . '/config.php';
+
+// ── Session bootstrap (before session_start) ────────────────────────
+$isSecure = ($APP_ENV === 'production') || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+ini_set('session.use_strict_mode', '1');
+session_set_cookie_params([
+    'httponly'  => true,
+    'samesite'  => 'Strict',
+    'secure'    => $isSecure,
+]);
 session_start();
 
-require __DIR__ . '/config.php';
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/utils.php';
 
