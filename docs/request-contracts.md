@@ -1,6 +1,6 @@
 # Request contracts
 
-All POST endpoints are handled by `index.php`. All require a valid CSRF token in the `csrf` form field.
+All POST endpoints are handled by `index.php`. All require a valid CSRF token in the `csrf` form field. Rate-limited actions return HTTP 429 when limits are exceeded.
 
 ## AJAX detection
 
@@ -68,6 +68,7 @@ Notes:
 - `owner_token` is stripped from the response (`unset($row['owner_token'])`).
 - `is_owner` is always `true` for the poster's own new message.
 - `comments` is an empty array for new posts.
+- Rate limited: max `RATE_LIMIT_POSTS_PER_10M` (default 10) per 10 minutes per IP.
 
 ### Failure (AJAX)
 
@@ -210,3 +211,124 @@ Redirects 303. If not authorized, sets `$_SESSION['flash'] = 'You can only delet
 When `X-Requested-With` is absent, all successful POST actions redirect with HTTP 303 via the `prg_redirect()` function. This preserves query parameters (`q`, `sort`, `page`) in the redirect target.
 
 Flash messages are stored in `$_SESSION['flash']` and displayed once by `views/home.php`.
+
+---
+
+## Report content
+
+**Action:** `report`
+
+Rate limited: max `RATE_LIMIT_REPORTS_PER_10M` (default 5) per 10 minutes per IP.
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"report"` |
+| `csrf` | string | yes | CSRF token |
+| `target_type` | string | yes | `"message"` or `"comment"` |
+| `target_id` | int | yes | ID of the reported content |
+| `reason` | string | yes | One of: `spam`, `abuse`, `illegal`, `misinfo`, `other` |
+| `note` | string | no | Optional details, max 500 chars |
+
+### Success (AJAX)
+
+HTTP 200:
+
+```json
+{ "ok": true }
+```
+
+### Failure (AJAX)
+
+HTTP 422:
+
+```json
+{ "ok": false, "error": "Unable to submit report." }
+```
+
+### Non-AJAX success
+
+Sets `$_SESSION['flash'] = 'Report submitted. Thank you.'` and redirects 303.
+
+---
+
+## Admin login
+
+**Action:** `admin_login`
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"admin_login"` |
+| `csrf` | string | yes | CSRF token |
+| `password` | string | yes | Admin password (verified against `ADMIN_PASSWORD_HASH` env) |
+
+### Response
+
+Always redirects 303 to `?page=admin`. Sets `$_SESSION['is_admin'] = true` on success, or flash error on failure.
+
+---
+
+## Admin logout
+
+**Action:** `admin_logout`
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"admin_logout"` |
+| `csrf` | string | yes | CSRF token |
+
+### Response
+
+Clears `$_SESSION['is_admin']`, redirects 303 to `?page=admin`.
+
+---
+
+## Moderation action
+
+**Action:** `mod_action`
+
+Requires `$_SESSION['is_admin']` to be true. Returns HTTP 403 otherwise.
+
+### Request
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `action` | string | yes | `"mod_action"` |
+| `csrf` | string | yes | CSRF token |
+| `target_type` | string | yes | `"message"` or `"comment"` |
+| `target_id` | int | yes | ID of the content |
+| `mod_action` | string | yes | `"hide"`, `"remove"`, `"restore"`, or `"dismiss"` |
+| `reason` | string | no | Admin reason for the action |
+| `report_id` | int | no | Report ID to resolve alongside the action |
+
+### Response
+
+Redirects 303 to `?page=admin` with flash message.
+
+---
+
+## Rate limiting
+
+All rate-limited actions (add, comment, react, report) return HTTP 429 when limits are exceeded.
+
+**AJAX response:**
+
+```json
+{ "ok": false, "error": "Rate limit exceeded. Please slow down." }
+```
+
+**Non-AJAX response:** plain text `Rate limit exceeded. Please slow down.`
+
+Limits are configurable via environment variables (all per 10-minute window):
+
+| Variable | Default | Action |
+|----------|---------|--------|
+| `RATE_LIMIT_POSTS_PER_10M` | 10 | Post creation |
+| `RATE_LIMIT_COMMENTS_PER_10M` | 30 | Comment creation |
+| `RATE_LIMIT_VOTES_PER_10M` | 60 | Voting |
+| `RATE_LIMIT_REPORTS_PER_10M` | 5 | Report submission |

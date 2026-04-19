@@ -1,7 +1,5 @@
 <?php
 declare(strict_types=1);
-ini_set('display_errors', '1');
-error_reporting(E_ALL);
 
 session_start();
 
@@ -42,6 +40,25 @@ if (in_array($pageName, ['about', 'creator', 'links', 'privacy'], true)) {
     exit;
 }
 
+// -- Admin page --
+if ($pageName === 'admin') {
+    $isAdmin = !empty($_SESSION['is_admin']);
+    if (!$isAdmin) {
+        render('admin', ['logged_in' => false]);
+        exit;
+    }
+    $reportStatus = $_GET['report_status'] ?? 'open';
+    $reports = listReports($pdo, $reportStatus);
+    $openCount = countReports($pdo, 'open');
+    render('admin', [
+        'logged_in' => true,
+        'reports' => $reports,
+        'report_status' => $reportStatus,
+        'open_count' => $openCount,
+    ]);
+    exit;
+}
+
 // -- POST actions --
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $csrf = $_POST['csrf'] ?? '';
@@ -59,6 +76,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = $_POST['action'] ?? null;
     $xhr    = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
+
+    /** Check rate limit; abort with 429 if exceeded. */
+    $rateLimitMap = [
+        'add'     => ['post',    $RATE_LIMIT_POSTS],
+        'comment' => ['comment', $RATE_LIMIT_COMMENTS],
+        'react'   => ['vote',    $RATE_LIMIT_VOTES],
+        'report'  => ['report',  $RATE_LIMIT_REPORTS],
+    ];
+    if (isset($rateLimitMap[$action])) {
+        [$rlAction, $rlMax] = $rateLimitMap[$action];
+        if (checkRateLimit($pdo, clientIpHash(), $rlAction, $rlMax, 600)) {
+            recordRateEvent($pdo, clientIpHash(), $rlAction);
+        } else {
+            http_response_code(429);
+            if ($xhr) {
+                header('Content-Type: application/json');
+                echo json_encode(['ok' => false, 'error' => 'Rate limit exceeded. Please slow down.']);
+            } else {
+                echo 'Rate limit exceeded. Please slow down.';
+            }
+            exit;
+        }
+    }
 
     // -- Create post --
     if ($action === 'add') {
@@ -157,6 +197,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         prg_redirect();
 
+    // -- Report content --
+    } elseif ($action === 'report') {
+        $targetType = $_POST['target_type'] ?? '';
+        $targetId   = (int)($_POST['target_id'] ?? 0);
+        $reason     = $_POST['reason'] ?? '';
+        $note       = $_POST['note'] ?? '';
+        $ok = submitReport($pdo, $targetType, $targetId, $reason, $note, $authorToken);
+
+        if ($xhr) {
+            header('Content-Type: application/json');
+            if ($ok) {
+                echo json_encode(['ok' => true]);
+            } else {
+                http_response_code(422);
+                echo json_encode(['ok' => false, 'error' => 'Unable to submit report.']);
+            }
+            exit;
+        }
+        if ($ok) {
+            $_SESSION['flash'] = 'Report submitted. Thank you.';
+        }
+        prg_redirect();
+
+    // -- Admin login --
+    } elseif ($action === 'admin_login') {
+        $password = $_POST['password'] ?? '';
+        if ($ADMIN_PASSWORD_HASH !== '' && password_verify($password, $ADMIN_PASSWORD_HASH)) {
+            $_SESSION['is_admin'] = true;
+            $_SESSION['flash'] = 'Logged in as admin.';
+        } else {
+            $_SESSION['flash'] = 'Invalid admin password.';
+        }
+        header('Location: ?page=admin', true, 303);
+        exit;
+
+    // -- Admin logout --
+    } elseif ($action === 'admin_logout') {
+        unset($_SESSION['is_admin']);
+        $_SESSION['flash'] = 'Logged out.';
+        header('Location: ?page=admin', true, 303);
+        exit;
+
+    // -- Admin moderation action --
+    } elseif ($action === 'mod_action') {
+        if (empty($_SESSION['is_admin'])) {
+            http_response_code(403);
+            echo 'Forbidden';
+            exit;
+        }
+        $targetType = $_POST['target_type'] ?? '';
+        $targetId   = (int)($_POST['target_id'] ?? 0);
+        $modAction  = $_POST['mod_action'] ?? '';
+        $reason     = $_POST['reason'] ?? '';
+        $reportId   = (int)($_POST['report_id'] ?? 0);
+
+        if ($modAction === 'dismiss' && $reportId > 0) {
+            resolveReport($pdo, $reportId, 'dismissed');
+            logModerationAction($pdo, $targetType, $targetId, 'dismiss_report', $reason);
+        } else {
+            $statusMap = ['hide' => 'hidden', 'remove' => 'removed_by_mod', 'restore' => 'visible'];
+            $newStatus = $statusMap[$modAction] ?? '';
+            if ($newStatus !== '') {
+                moderateContent($pdo, $targetType, $targetId, $newStatus, $reason);
+                if ($reportId > 0) {
+                    resolveReport($pdo, $reportId, 'reviewed');
+                }
+            }
+        }
+
+        $_SESSION['flash'] = 'Moderation action applied.';
+        header('Location: ?page=admin', true, 303);
+        exit;
+
     } else {
         prg_redirect();
     }
@@ -180,5 +293,6 @@ $activeUsers = listActiveUsers($pdo, 6);
 // Flash message
 $flash = $_SESSION['flash'] ?? null;
 $_SESSION['flash'] = null;
+$isAdmin = !empty($_SESSION['is_admin']);
 
-render('home', compact('messages', 'q', 'page', 'pages', 'total', 'sort', 'communities', 'activeUsers', 'flash'));
+render('home', compact('messages', 'q', 'page', 'pages', 'total', 'sort', 'communities', 'activeUsers', 'flash', 'isAdmin'));

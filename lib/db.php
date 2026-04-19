@@ -1,6 +1,43 @@
 <?php
 declare(strict_types=1);
 
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/** SHA-256 hash an IP for privacy-conscious storage. */
+function hashIp(string $ip): string {
+  return hash('sha256', $ip);
+}
+
+/** Return hashed client IP using conservative header handling. */
+function clientIpHash(): string {
+  $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+  return hashIp($ip);
+}
+
+// ── Rate Limiting ────────────────────────────────────────────────────
+
+function checkRateLimit(PDO $pdo, string $identifier, string $action, int $maxPerWindow = 10, int $windowSeconds = 600): bool {
+  $stmt = $pdo->prepare(
+    'SELECT COUNT(*) AS c FROM rate_limits
+     WHERE identifier = :id AND action = :action
+       AND created_at >= DATE_SUB(NOW(), INTERVAL :window SECOND)'
+  );
+  $stmt->execute([':id' => $identifier, ':action' => $action, ':window' => $windowSeconds]);
+  return (int)$stmt->fetch()['c'] < $maxPerWindow;
+}
+
+function recordRateEvent(PDO $pdo, string $identifier, string $action): void {
+  $stmt = $pdo->prepare('INSERT INTO rate_limits (identifier, action) VALUES (?, ?)');
+  $stmt->execute([$identifier, $action]);
+}
+
+function pruneOldRateEvents(PDO $pdo, int $olderThanMinutes = 60): void {
+  $pdo->prepare('DELETE FROM rate_limits WHERE created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)')
+      ->execute([$olderThanMinutes]);
+}
+
+// ── Users ────────────────────────────────────────────────────────────
+
 function findOrCreateUser(PDO $pdo, string $nickname): int {
   $nickname = trim($nickname) ?: 'Anon';
   $stmt = $pdo->prepare('SELECT id FROM users WHERE nickname = ?');
@@ -13,6 +50,8 @@ function findOrCreateUser(PDO $pdo, string $nickname): int {
   $stmt->execute([$nickname]);
   return (int)$pdo->lastInsertId();
 }
+
+// ── User Activity ────────────────────────────────────────────────────
 
 function recordUserActivity(PDO $pdo, int $userId, string $kind): void {
   if ($userId <= 0) {
@@ -125,9 +164,9 @@ function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug 
 function countMessages(PDO $pdo, string $q): int {
   $q = trim($q);
   if ($q === '') {
-    return (int)$pdo->query('SELECT COUNT(*) AS c FROM messages')->fetch()['c'];
+    return (int)$pdo->query("SELECT COUNT(*) AS c FROM messages WHERE status = 'visible'")->fetch()['c'];
   }
-  $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM messages WHERE body LIKE ?');
+  $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM messages WHERE status = 'visible' AND body LIKE ?");
   $stmt->execute(['%' . $q . '%']);
   return (int)$stmt->fetch()['c'];
 }
@@ -136,7 +175,7 @@ function deleteMessage(PDO $pdo, int $id, string $ownerToken = ''): bool {
   if ($id <= 0 || $ownerToken === '') {
     return false;
   }
-  $stmt = $pdo->prepare('DELETE FROM messages WHERE id = ? AND owner_token = ?');
+  $stmt = $pdo->prepare("UPDATE messages SET status = 'removed_by_owner' WHERE id = ? AND owner_token = ? AND status = 'visible'");
   $stmt->execute([$id, $ownerToken]);
   return $stmt->rowCount() > 0;
 }
@@ -146,10 +185,10 @@ function reactMessage(PDO $pdo, int $id, string $type): void {
     return;
   }
   if ($type === 'up') {
-    $pdo->prepare('UPDATE messages SET upvotes = upvotes + 1 WHERE id = ?')->execute([$id]);
+    $pdo->prepare("UPDATE messages SET upvotes = upvotes + 1 WHERE id = ? AND status = 'visible'")->execute([$id]);
   }
   if ($type === 'down') {
-    $pdo->prepare('UPDATE messages SET downvotes = downvotes + 1 WHERE id = ?')->execute([$id]);
+    $pdo->prepare("UPDATE messages SET downvotes = downvotes + 1 WHERE id = ? AND status = 'visible'")->execute([$id]);
   }
 }
 
@@ -160,13 +199,14 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
   } elseif ($sort === 'top') {
     $order = ' (CAST(m.upvotes AS SIGNED) - CAST(m.downvotes AS SIGNED)) DESC, m.id DESC';
   }
-  $base = 'SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token,
+  $base = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token,
                   u.nickname,
                   c.name AS community_name, c.slug AS community_slug
            FROM messages m
            JOIN users u ON u.id = m.user_id
            LEFT JOIN message_topics mt ON mt.message_id = m.id
-           LEFT JOIN communities c ON c.id = mt.community_id';
+           LEFT JOIN communities c ON c.id = mt.community_id
+           WHERE m.status = 'visible'";
   if (trim($q) === '') {
     $sql = $base . " ORDER BY $order LIMIT :limit OFFSET :offset";
     $stmt = $pdo->prepare($sql);
@@ -176,7 +216,7 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
     $rows = $stmt->fetchAll();
     return hydrateComments($pdo, $rows);
   }
-  $sql = $base . ' WHERE m.body LIKE :like ORDER BY ' . $order . ' LIMIT :limit OFFSET :offset';
+  $sql = $base . ' AND m.body LIKE :like ORDER BY ' . $order . ' LIMIT :limit OFFSET :offset';
   $stmt = $pdo->prepare($sql);
   $stmt->bindValue(':like', '%' . trim($q) . '%', PDO::PARAM_STR);
   $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
@@ -187,14 +227,14 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
 }
 
 function getMessage(PDO $pdo, int $id): ?array {
-  $sql = 'SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token,
+  $sql = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.status,
                  u.nickname,
                  c.name AS community_name, c.slug AS community_slug
           FROM messages m
           JOIN users u ON u.id = m.user_id
           LEFT JOIN message_topics mt ON mt.message_id = m.id
           LEFT JOIN communities c ON c.id = mt.community_id
-          WHERE m.id = ?';
+          WHERE m.id = ?";
   $stmt = $pdo->prepare($sql);
   $stmt->execute([$id]);
   $row = $stmt->fetch();
@@ -213,7 +253,7 @@ function addComment(PDO $pdo, int $messageId, string $nickname, string $body): ?
     return null;
   }
 
-  $stmt = $pdo->prepare('SELECT user_id FROM messages WHERE id = ?');
+  $stmt = $pdo->prepare("SELECT user_id FROM messages WHERE id = ? AND status = 'visible'");
   $stmt->execute([$messageId]);
   $messageOwner = $stmt->fetch();
   if (!$messageOwner) {
@@ -254,7 +294,7 @@ function listCommentsForMessages(PDO $pdo, array $messageIds): array {
   $placeholders = implode(',', array_fill(0, count($ids), '?'));
   $sql = "SELECT id, message_id, nickname, body, created_at
           FROM comments
-          WHERE message_id IN ($placeholders)
+          WHERE message_id IN ($placeholders) AND status = 'visible'
           ORDER BY created_at ASC, id ASC";
   $stmt = $pdo->prepare($sql);
   $stmt->execute($ids);
@@ -329,4 +369,108 @@ function listActiveUsers(PDO $pdo, int $limit = 5): array {
       'last_seen' => $row['last_seen'],
     ];
   }, $rows ?: []);
+}
+
+// ── Reporting ────────────────────────────────────────────────────────
+
+function submitReport(PDO $pdo, string $targetType, int $targetId, string $reason, string $note, string $sessionToken): bool {
+  $allowed = ['message', 'comment'];
+  if (!in_array($targetType, $allowed, true) || $targetId <= 0) {
+    return false;
+  }
+  $allowedReasons = ['spam', 'abuse', 'illegal', 'misinfo', 'other'];
+  if (!in_array($reason, $allowedReasons, true)) {
+    return false;
+  }
+  $note = mb_substr(trim($note), 0, 500);
+  $ipHash = clientIpHash();
+  $stmt = $pdo->prepare(
+    'INSERT INTO reports(target_type, target_id, reason, note, ip_hash, session_token)
+     VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  $stmt->execute([$targetType, $targetId, $reason, $note, $ipHash, $sessionToken]);
+  return true;
+}
+
+function listReports(PDO $pdo, string $status = 'open', int $limit = 50, int $offset = 0): array {
+  $sql = 'SELECT r.*, 
+                 CASE r.target_type
+                   WHEN \'message\' THEN (SELECT body FROM messages WHERE id = r.target_id)
+                   WHEN \'comment\' THEN (SELECT body FROM comments WHERE id = r.target_id)
+                 END AS target_body
+          FROM reports r
+          WHERE r.status = :status
+          ORDER BY r.created_at DESC
+          LIMIT :limit OFFSET :offset';
+  $stmt = $pdo->prepare($sql);
+  $stmt->bindValue(':status', $status, PDO::PARAM_STR);
+  $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+  $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+  $stmt->execute();
+  return $stmt->fetchAll();
+}
+
+function countReports(PDO $pdo, string $status = 'open'): int {
+  $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM reports WHERE status = ?');
+  $stmt->execute([$status]);
+  return (int)$stmt->fetch()['c'];
+}
+
+// ── Moderation ───────────────────────────────────────────────────────
+
+function moderateContent(PDO $pdo, string $targetType, int $targetId, string $newStatus, string $adminReason = ''): bool {
+  $allowedTypes = ['message', 'comment'];
+  $allowedStatuses = ['visible', 'hidden', 'removed_by_mod'];
+  if (!in_array($targetType, $allowedTypes, true) || !in_array($newStatus, $allowedStatuses, true)) {
+    return false;
+  }
+  $table = $targetType === 'message' ? 'messages' : 'comments';
+  $stmt = $pdo->prepare("UPDATE $table SET status = ? WHERE id = ?");
+  $stmt->execute([$newStatus, $targetId]);
+  if ($stmt->rowCount() > 0) {
+    $action = match ($newStatus) {
+      'hidden' => 'hide',
+      'removed_by_mod' => 'remove',
+      'visible' => 'restore',
+    };
+    logModerationAction($pdo, $targetType, $targetId, $action, $adminReason);
+    return true;
+  }
+  return false;
+}
+
+function resolveReport(PDO $pdo, int $reportId, string $newStatus): bool {
+  $allowed = ['reviewed', 'dismissed'];
+  if (!in_array($newStatus, $allowed, true)) {
+    return false;
+  }
+  $stmt = $pdo->prepare('UPDATE reports SET status = ? WHERE id = ?');
+  $stmt->execute([$newStatus, $reportId]);
+  return $stmt->rowCount() > 0;
+}
+
+function logModerationAction(PDO $pdo, string $targetType, int $targetId, string $action, string $reason): void {
+  $stmt = $pdo->prepare(
+    'INSERT INTO moderation_log(target_type, target_id, action, reason, admin_ip_hash)
+     VALUES (?, ?, ?, ?, ?)'
+  );
+  $stmt->execute([$targetType, $targetId, $action, mb_substr(trim($reason), 0, 500), clientIpHash()]);
+}
+
+function getMessageForAdmin(PDO $pdo, int $id): ?array {
+  $sql = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.status,
+                 u.nickname
+          FROM messages m
+          JOIN users u ON u.id = m.user_id
+          WHERE m.id = ?";
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute([$id]);
+  return $stmt->fetch() ?: null;
+}
+
+function getCommentForAdmin(PDO $pdo, int $id): ?array {
+  $sql = "SELECT id, message_id, nickname, body, created_at, status FROM comments WHERE id = ?";
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute([$id]);
+  return $stmt->fetch() ?: null;
 }

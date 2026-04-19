@@ -23,6 +23,9 @@
         <a href="?page=creator" class="btn-outline">Creator</a>
         <a href="?page=links" class="btn-outline">Socials</a>
         <a href="?page=privacy" class="btn-outline">Privacy</a>
+        <?php if (!empty($isAdmin)): ?>
+          <a href="?page=admin" class="btn-outline btn-admin-link">Admin</a>
+        <?php endif; ?>
         <select id="themePicker" class="btn-outline">
           <option value="dark">Dark</option>
           <option value="light">Light</option>
@@ -129,6 +132,10 @@
                     Delete
                   </button>
                   <?php endif; ?>
+                  <button class="btn-outline btn-report" data-report
+                          data-target-type="message"
+                          data-target-id="<?= (int)$m['id'] ?>"
+                          title="Report this post">&#9873;</button>
                 </div>
 
                 <p><?= nl2br(htmlspecialchars($m['body'])) ?></p>
@@ -253,6 +260,32 @@
         <input type="hidden" name="action" value="delete">
         <button type="button" class="btn-outline" data-close>Cancel</button>
         <button class="btn-danger">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Report modal -->
+  <div id="reportModal" class="modal" aria-hidden="true">
+    <div class="modal-panel">
+      <h2 style="margin-top:0;">Report content</h2>
+      <p class="helper">Help us keep the cave civil. Select a reason:</p>
+      <form id="reportForm" method="post" action="">
+        <input type="hidden" name="target_type" value="">
+        <input type="hidden" name="target_id" value="">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="report">
+        <div style="margin-bottom:10px;">
+          <label><input type="radio" name="reason" value="spam" required> Spam</label><br>
+          <label><input type="radio" name="reason" value="abuse"> Abuse / Harassment</label><br>
+          <label><input type="radio" name="reason" value="illegal"> Illegal content</label><br>
+          <label><input type="radio" name="reason" value="misinfo"> Dangerous misinformation</label><br>
+          <label><input type="radio" name="reason" value="other"> Other</label>
+        </div>
+        <textarea name="note" placeholder="Optional details..." maxlength="500" rows="2"></textarea>
+        <div class="row" style="margin-top:10px;">
+          <button type="button" class="btn-outline" data-close>Cancel</button>
+          <button class="btn-danger">Submit report</button>
+        </div>
       </form>
     </div>
   </div>

@@ -146,3 +146,57 @@ fetch('/', {
 5. Press Escape in the search field — filter clears.
 
 **Pass:** search filters correctly, sort changes order, escape clears search.
+
+---
+
+## 11. Report content
+
+1. On any post, click the ⚑ report button.
+2. Report modal opens with reason radio buttons and optional note textarea.
+3. Select a reason (e.g., "Spam"). Optionally add a note.
+4. Click **Submit report**.
+
+**With JS:** modal closes. Toast says "Report submitted. Thank you."
+
+5. Try submitting without selecting a reason — toast says "Please select a reason" and modal stays open.
+
+**Pass:** report submits successfully with valid reason. Validation prevents empty submissions.
+
+---
+
+## 12. Rate limiting
+
+1. Rapidly submit 11+ posts in under 10 minutes (or set `RATE_LIMIT_POSTS_PER_10M=2` for easier testing).
+2. After the limit is exceeded, submission returns HTTP 429.
+
+**With JS:** Toast says "Rate limit exceeded. Please slow down."
+
+**Pass:** rate limiting engages and provides clear feedback.
+
+---
+
+## 13. Admin panel
+
+1. Navigate to `/?page=admin`.
+2. Login form is displayed.
+3. Enter an incorrect password — flash says "Invalid admin password."
+4. Set `ADMIN_PASSWORD_HASH` env var (generate with `php -r "echo password_hash('testpass', PASSWORD_DEFAULT);"`) and enter the correct password.
+5. Admin panel loads showing report queue.
+6. Reports from step 11 appear with "Hide", "Remove", "Dismiss" buttons.
+7. Click **Hide** on a report — content becomes invisible to public, report status changes.
+8. Click **Dismiss** on another report — report moved to dismissed tab.
+9. Navigate back to main site — hidden content is not shown.
+10. Click **Logout** — returns to login form.
+
+**Pass:** admin auth works, moderation actions affect content visibility, audit trail logged.
+
+---
+
+## 14. Soft delete verification
+
+1. Create a post. Delete it using the Delete button.
+2. Check the database: `SELECT status FROM messages WHERE id = <id>` should show `removed_by_owner`.
+3. The post is no longer visible on the public feed.
+4. As admin, the post can be restored via mod_action with `restore`.
+
+**Pass:** deletes are soft (status change), not hard (row removal).

@@ -1,4 +1,4 @@
-// assets/app.js — single coherent interaction layer for Cave of Conspiracies
+// assets/app.js ï¿½ single coherent interaction layer for Cave of Conspiracies
 document.addEventListener('DOMContentLoaded', () => {
   'use strict';
 
@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
           (m.is_owner
             ? '<button class="btn-danger" data-delete data-id="' + m.id + '" data-snippet="' + escapeHtml((m.body || '').substring(0, 60)) + '">Delete</button>'
             : '') +
+          '<button class="btn-outline btn-report" data-report data-target-type="message" data-target-id="' + m.id + '" title="Report this post">&#9873;</button>' +
         '</div>' +
         '<p>' + nl2br(escapeHtml(m.body)) + '</p>' +
         '<section class="comments" data-message="' + m.id + '">' +
@@ -148,6 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: data
       })
       .then(function (res) {
+        if (res.status === 429) { showToast('Rate limit exceeded. Please slow down.', true); throw new Error('rate-limited'); }
         if (!res.ok) throw new Error('Server error ' + res.status);
         return res.json();
       })
@@ -168,8 +170,10 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Posted!');
       })
       .catch(function (err) {
-        console.error('Add failed:', err);
-        showToast('Could not post', true);
+        if (err.message !== 'rate-limited') {
+          console.error('Add failed:', err);
+          showToast('Could not post', true);
+        }
       });
     });
   }
@@ -197,6 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
       body: data
     })
     .then(function (res) {
+      if (res.status === 429) { showToast('Rate limit exceeded. Please slow down.', true); throw new Error('rate-limited'); }
       if (!res.ok) throw new Error('Server error ' + res.status);
       return res.json();
     })
@@ -210,8 +215,10 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Comment posted!');
     })
     .catch(function (err) {
-      console.error('Comment failed:', err);
-      showToast('Could not post comment', true);
+      if (err.message !== 'rate-limited') {
+        console.error('Comment failed:', err);
+        showToast('Could not post comment', true);
+      }
     })
     .finally(function () {
       if (btn) btn.disabled = false;
@@ -235,6 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
       body: data
     })
     .then(function (res) {
+      if (res.status === 429) { showToast('Rate limit exceeded. Please slow down.', true); throw new Error('rate-limited'); }
       if (!res.ok) throw new Error('Server error ' + res.status);
       return res.json();
     })
@@ -252,7 +260,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     })
     .catch(function (err) {
-      console.error('Vote failed:', err);
+      if (err.message !== 'rate-limited') {
+        console.error('Vote failed:', err);
+      }
     });
   });
 
@@ -317,6 +327,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
   var flash = document.querySelector('.flash');
   if (flash) setTimeout(function () { flash.style.display = 'none'; }, 2500);
+
+  // -- Report modal --
+
+  var reportModal = document.getElementById('reportModal');
+  var reportForm = document.getElementById('reportForm');
+
+  document.addEventListener('click', function (e) {
+    var reportBtn = e.target.closest('[data-report]');
+    if (reportBtn && reportModal && reportForm) {
+      e.preventDefault();
+      var ttInput = reportForm.querySelector('input[name="target_type"]');
+      var tiInput = reportForm.querySelector('input[name="target_id"]');
+      if (ttInput) ttInput.value = reportBtn.dataset.targetType || 'message';
+      if (tiInput) tiInput.value = reportBtn.dataset.targetId || '';
+      // Reset form selections
+      var checked = reportForm.querySelector('input[name="reason"]:checked');
+      if (checked) checked.checked = false;
+      var noteEl = reportForm.querySelector('textarea[name="note"]');
+      if (noteEl) noteEl.value = '';
+      reportModal.classList.add('open');
+      return;
+    }
+    if (e.target.closest('[data-close]') && reportModal) {
+      reportModal.classList.remove('open');
+    }
+  });
+
+  if (reportForm) {
+    reportForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = new FormData(reportForm);
+      var reason = data.get('reason');
+      if (!reason) {
+        showToast('Please select a reason', true);
+        return;
+      }
+
+      fetch(location.pathname + location.search, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'fetch' },
+        body: data
+      })
+      .then(function (res) {
+        if (res.status === 429) {
+          showToast('Rate limit exceeded. Please slow down.', true);
+          throw new Error('rate-limited');
+        }
+        if (!res.ok) throw new Error('Server error ' + res.status);
+        return res.json();
+      })
+      .then(function (json) {
+        if (reportModal) reportModal.classList.remove('open');
+        if (json && json.ok) {
+          showToast('Report submitted. Thank you.');
+        } else {
+          showToast((json && json.error) || 'Unable to submit report', true);
+        }
+      })
+      .catch(function (err) {
+        if (reportModal) reportModal.classList.remove('open');
+        if (err.message !== 'rate-limited') {
+          console.error('Report failed:', err);
+          showToast('Could not submit report', true);
+        }
+      });
+    });
+  }
 
   // -- Search clear helper --
 

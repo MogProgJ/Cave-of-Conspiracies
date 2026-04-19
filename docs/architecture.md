@@ -9,11 +9,16 @@ Browser
   │
   ├─ GET /                      → index.php → render('home', ...) → views/home.php
   ├─ GET /?page=about           → index.php → render('about', []) → views/about.php
+  ├─ GET /?page=admin           → index.php → render('admin', ...) → views/admin.php
   │
-  ├─ POST action=add            → index.php → addMessage() → JSON or PRG redirect
-  ├─ POST action=comment        → index.php → addComment() → JSON or PRG redirect
-  ├─ POST action=react          → index.php → reactMessage() → JSON or PRG redirect
-  └─ POST action=delete         → index.php → deleteMessage() → JSON or PRG redirect
+  ├─ POST action=add            → index.php → rate limit → addMessage() → JSON or PRG redirect
+  ├─ POST action=comment        → index.php → rate limit → addComment() → JSON or PRG redirect
+  ├─ POST action=react          → index.php → rate limit → reactMessage() → JSON or PRG redirect
+  ├─ POST action=delete         → index.php → deleteMessage() → JSON or PRG redirect
+  ├─ POST action=report         → index.php → rate limit → submitReport() → JSON or PRG redirect
+  ├─ POST action=admin_login    → index.php → session admin flag → redirect
+  ├─ POST action=admin_logout   → index.php → clear admin flag → redirect
+  └─ POST action=mod_action     → index.php → admin check → moderateContent() → redirect
 ```
 
 All POST actions check for the `X-Requested-With: fetch` header. If present, they return JSON. If absent, they use Post-Redirect-Get (303).
@@ -26,8 +31,10 @@ All POST actions check for the `X-Requested-With: fetch` header. If present, the
 - Starts session. Generates `$_SESSION['author_token']` (64-char hex) on first visit.
 - Ensures the `general` community exists.
 - Routes static pages: about, creator, links, privacy.
-- Handles all POST actions: add, comment, react, delete.
+- Routes admin page: `?page=admin` (requires `$_SESSION['is_admin']`).
+- Handles all POST actions: add, comment, react, delete, report, admin_login, admin_logout, mod_action.
 - CSRF verification on every POST.
+- DB-backed rate limiting on add, comment, react, report (per hashed IP, configurable).
 - Renders the home page via `render()` with data from `lib/db.php`.
 
 ### config.php
@@ -35,6 +42,10 @@ All POST actions check for the `X-Requested-With: fetch` header. If present, the
 - Creates the `$pdo` PDO connection.
 - Reads `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` from environment variables.
 - Falls back to local dev defaults (`127.0.0.1`, `playground`, `root`, empty password).
+- `APP_ENV` controls error display (production hides, development shows).
+- Session cookie hardening: httponly, samesite=Strict, strict mode, secure in production.
+- `ADMIN_PASSWORD_HASH` for admin authentication.
+- Rate limit thresholds: `RATE_LIMIT_POSTS_PER_10M`, `RATE_LIMIT_COMMENTS_PER_10M`, `RATE_LIMIT_REPORTS_PER_10M`, `RATE_LIMIT_VOTES_PER_10M`.
 
 ### lib/db.php
 
@@ -44,15 +55,28 @@ Key functions:
 
 | Function | Purpose |
 |----------|---------|
+| `hashIp($ip)` | SHA-256 hash an IP string for privacy |
+| `clientIpHash()` | Get hashed IP of current request |
+| `checkRateLimit($pdo, $identifier, $action, $max, $window)` | Check if action is within rate limit |
+| `recordRateEvent($pdo, $identifier, $action)` | Log a rate-limit event |
+| `pruneOldRateEvents($pdo, $window)` | Cleanup old rate-limit entries |
 | `findOrCreateUser($pdo, $nickname)` | Get or insert user by nickname, returns user ID |
 | `addMessage($pdo, $userId, $body, $communitySlug, $ownerToken)` | Insert message with ownership token |
-| `getMessage($pdo, $id)` | Fetch single message with joins + hydrated comments |
-| `listMessages($pdo, $q, $limit, $offset, $sort)` | Paginated message list with search, sorting, comments |
-| `countMessages($pdo, $q)` | Count for pagination |
-| `deleteMessage($pdo, $id, $ownerToken)` | Delete only if `owner_token` matches |
-| `reactMessage($pdo, $id, $type)` | Increment upvotes or downvotes |
-| `addComment($pdo, $messageId, $nickname, $body)` | Insert comment, validate message exists first |
-| `hydrateComments($pdo, $messages)` | Batch-load comments for a set of messages |
+| `getMessage($pdo, $id)` | Fetch single message with joins + hydrated comments (includes status) |
+| `listMessages($pdo, $q, $limit, $offset, $sort)` | Paginated message list (status='visible' only) |
+| `countMessages($pdo, $q)` | Count visible messages for pagination |
+| `deleteMessage($pdo, $id, $ownerToken)` | Soft-delete: sets status to 'removed_by_owner' |
+| `reactMessage($pdo, $id, $type)` | Increment upvotes/downvotes (visible messages only) |
+| `addComment($pdo, $messageId, $nickname, $body)` | Insert comment (validates parent message is visible) |
+| `hydrateComments($pdo, $messages)` | Batch-load visible comments for a set of messages |
+| `submitReport($pdo, $targetType, $targetId, $reason, $note, $sessionToken)` | Insert abuse report |
+| `listReports($pdo, $status, $limit, $offset)` | Admin: list reports by status |
+| `countReports($pdo, $status)` | Admin: count reports |
+| `moderateContent($pdo, $targetType, $targetId, $newStatus, $adminReason)` | Admin: change content status |
+| `resolveReport($pdo, $reportId, $newStatus)` | Admin: mark report reviewed/dismissed |
+| `logModerationAction($pdo, ...)` | Insert moderation audit log entry |
+| `getMessageForAdmin($pdo, $id)` | Fetch message regardless of status |
+| `getCommentForAdmin($pdo, $id)` | Fetch comment regardless of status |
 | `listCommunities($pdo, $limit)` | Trending communities (7-day window) |
 | `listActiveUsers($pdo, $limit)` | Top users by activity |
 | `ensureCommunity($pdo, $slug, $name, $tagline)` | Idempotent community creation |
@@ -75,10 +99,23 @@ The DOM source of truth. Contains:
 - **Message list** (`#messageList`) — `<article class="msg" id="msg_{id}">` cards.
 - **Vote forms** — per-message forms with `data-react="up|down"` and `data-id="{id}"` on buttons. Counter spans: `#up_{id}`, `#down_{id}`.
 - **Delete button** — only rendered when `$isOwner` is true. Uses `data-delete`, `data-id`, `data-snippet`.
+- **Report button** — always rendered on each message. Uses `data-report`, `data-target-type`, `data-target-id`.
 - **Comment section** — per-message `<section class="comments" data-message="{id}">` with `.comments-list` container and `.comment-form`.
 - **Pagination** — `<nav class="pager">`.
 - **Sidebar** — trending communities, active conspirators, community ticker.
 - **Delete modal** — `#deleteModal` with `#deleteForm` and `#deletePreview`.
+- **Report modal** — `#reportModal` with `#reportForm`, reason radio buttons, optional note textarea.
+- **Admin link** — shown in header when `$isAdmin` is true.
+
+### views/admin.php
+
+Admin moderation interface. Contains:
+
+- **Login form** — shown when `$logged_in` is false. Password field, `action=admin_login`.
+- **Report queue** — shown when logged in. Filterable by status (open/reviewed/dismissed).
+- **Report cards** — display target content preview, reason badge, timestamp, reporter note.
+- **Action buttons** — Hide, Remove, Dismiss per open report. Each is a separate form with `action=mod_action`.
+- **Logout button** — `action=admin_logout`.
 
 ### assets/app.js
 
@@ -90,6 +127,8 @@ Responsibilities:
 - Delegated vote handling → update `#up_{id}` / `#down_{id}` counters.
 - Delegated comment submission → append rendered comment to `.comments-list`.
 - Delete modal open/close/submit → AJAX delete with 403 error handling.
+- Report modal open/close/submit → AJAX report with reason validation.
+- 429 rate-limit error handling on all AJAX calls (toast notification).
 - Flash auto-hide, search escape-key clear, button ripple animation.
 
 Defines: `escapeHtml()`, `nl2br()`, `showToast()`, `csrfValue()`, `renderMessage()`, `renderComment()`, `hydrateCommentList()`.
@@ -113,27 +152,31 @@ Single responsibility: textarea character counter for `#msgBox` / `#countHint`.
 
 | Table | Purpose |
 |-------|---------|
-| `messages` | Posts: id, user_id, body(240), owner_token(64), upvotes, downvotes, created_at |
-| `comments` | Comments: id, message_id (FK→messages CASCADE), nickname(60), body(240), created_at |
+| `messages` | Posts: id, user_id, body(240), owner_token(64), upvotes, downvotes, status, created_at |
+| `comments` | Comments: id, message_id (FK→messages CASCADE), nickname(60), body(240), status, created_at |
 | `users` | Unique nicknames: id, nickname (UNIQUE), created_at |
 | `communities` | Slug-based: id, slug (UNIQUE), name, tagline, created_at |
 | `message_topics` | Message→community mapping: message_id (PK, FK→messages), community_id (FK→communities) |
 | `community_trends` | Daily activity snapshots: community_id + day (UNIQUE), posts, comments |
 | `user_activity` | Cumulative: user_id (PK, FK→users), last_seen, messages count, comments count |
 | `user_profiles` | Created but unused: user_id, location, bio, avatar_url |
+| `reports` | Abuse reports: target_type, target_id, reason, note, ip_hash, session_token, status |
+| `moderation_log` | Audit trail: target_type, target_id, action, reason, admin_ip_hash |
+| `rate_limits` | Per-IP rate tracking: identifier (hashed IP), action, created_at |
 
 ### Migration order
 
 1. `2025_10_27_messages.sql` — base messages table
 2. `2025_10_28_comments.sql` — comments with FK to messages
 3. `2025_10_29_social_tables.sql` — users, communities, topics, trends, profiles, activity; seeds default communities; idempotent `owner_token` backfill
+4. `2025_10_30_moderation.sql` — adds status columns to messages/comments, creates reports, moderation_log, and rate_limits tables
 
 ## Ownership model
 
 - On session start, `index.php` generates `$_SESSION['author_token']` (64-char hex via `random_bytes(32)`).
 - When a message is created, the token is stored in `messages.owner_token`.
 - `views/home.php` compares `$m['owner_token']` to `$_SESSION['author_token']` to decide whether to show the Delete button.
-- `deleteMessage()` requires the token to match: `DELETE ... WHERE id = ? AND owner_token = ?`.
+- `deleteMessage()` requires the token to match: soft-deletes by setting `status = 'removed_by_owner'`.
 - This is **not authentication**. Session loss = ownership loss. Pre-existing posts with empty `owner_token` are undeletable.
 
 ## Current strengths
@@ -144,11 +187,17 @@ Single responsibility: textarea character counter for `#msgBox` / `#countHint`.
 - PRG pattern prevents double-submit on non-AJAX fallback.
 - XSS protection: all output uses `htmlspecialchars()`, JS uses `escapeHtml()`.
 - No external dependencies.
+- DB-backed rate limiting (configurable per-action thresholds).
+- Content moderation: status-based visibility (visible/hidden/removed_by_mod/removed_by_owner).
+- Public reporting system with reason taxonomy.
+- Admin moderation panel with audit logging.
+- Session hardening (httponly, samesite, strict mode, secure in production).
+- IP privacy: all IPs are SHA-256 hashed before storage.
+- Soft deletes preserve audit trail.
 
 ## Current limits
 
 - No persistent identity across sessions.
-- No rate limiting or spam protection.
 - No FK from `messages.user_id` → `users.id`.
 - Nickname is globally unique — collisions prevent aliases.
 - No automated tests.

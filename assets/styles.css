@@ -496,3 +496,29 @@ button:disabled {
     flex-wrap: wrap;
   }
 }
+
+/* -- Report button --------------------------------------------------- */
+
+.btn-report {
+  font-size: 0.8rem;
+  padding: 2px 7px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.btn-report:hover {
+  opacity: 1;
+}
+
+/* -- Admin page ------------------------------------------------------ */
+
+.admin-report blockquote {
+  border-left: 3px solid var(--accent, #3ddc97);
+  padding-left: 10px;
+  opacity: 0.85;
+}
+
+.btn-admin-link {
+  border-color: var(--accent, #3ddc97);
+  color: var(--accent, #3ddc97);
+}

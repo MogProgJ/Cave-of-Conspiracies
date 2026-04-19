@@ -27,6 +27,12 @@ php -m | grep pdo_mysql
 | `DB_NAME` | `playground` | Database name |
 | `DB_USER` | `root` | MySQL user |
 | `DB_PASS` | *(empty)* | MySQL password |
+| `APP_ENV` | `development` | `production` hides errors, enforces secure cookies |
+| `ADMIN_PASSWORD_HASH` | *(empty)* | bcrypt hash for admin panel login (generate with `php -r "echo password_hash('yourpass', PASSWORD_DEFAULT);"`) |
+| `RATE_LIMIT_POSTS_PER_10M` | `10` | Max posts per 10 min per IP |
+| `RATE_LIMIT_COMMENTS_PER_10M` | `30` | Max comments per 10 min per IP |
+| `RATE_LIMIT_REPORTS_PER_10M` | `5` | Max reports per 10 min per IP |
+| `RATE_LIMIT_VOTES_PER_10M` | `60` | Max votes per 10 min per IP |
 
 Set them before starting the server:
 
@@ -54,6 +60,7 @@ Migrations must be applied in filename order. Each is idempotent (`IF NOT EXISTS
 mysql -u root playground < migrations/2025_10_27_messages.sql
 mysql -u root playground < migrations/2025_10_28_comments.sql
 mysql -u root playground < migrations/2025_10_29_social_tables.sql
+mysql -u root playground < migrations/2025_10_30_moderation.sql
 ```
 
 There is no migration runner script yet. Apply manually.

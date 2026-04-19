@@ -67,6 +67,9 @@ $requiredTables = [
     'message_topics',
     'community_trends',
     'user_activity',
+    'reports',
+    'moderation_log',
+    'rate_limits',
 ];
 
 if ($pdo) {
@@ -79,7 +82,28 @@ if ($pdo) {
             check("Table '{$table}' exists", false, 'Run migrations in order');
         }
     }
+
+    echo "\n--- Status columns ---\n";
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM messages LIKE 'status'");
+        check("messages.status column exists", $stmt->rowCount() > 0, 'Run 2025_10_30_moderation.sql');
+    } catch (PDOException $e) {
+        check("messages.status column exists", false, $e->getMessage());
+    }
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM comments LIKE 'status'");
+        check("comments.status column exists", $stmt->rowCount() > 0, 'Run 2025_10_30_moderation.sql');
+    } catch (PDOException $e) {
+        check("comments.status column exists", false, $e->getMessage());
+    }
 }
+
+// 5. Optional env var hints
+echo "\n--- Environment ---\n";
+$adminHash = getenv('ADMIN_PASSWORD_HASH');
+check('ADMIN_PASSWORD_HASH set', $adminHash !== false && $adminHash !== '', 'Admin panel will be inaccessible without this');
+$appEnv = getenv('APP_ENV') ?: 'development';
+check("APP_ENV = '{$appEnv}'", true);
 
 // Summary
 echo "\n=== Results: {$pass} passed, {$fail} failed ===\n";
