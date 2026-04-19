@@ -28,7 +28,7 @@ Run this checklist after any change to core flows. Each step includes what to ve
 1. Enter a nickname (e.g., `SmokeTest`).
 2. Select a community (or leave on General).
 3. Type a message (e.g., `Smoke test post`).
-4. Click **Transmit**.
+4. Click **Post**.
 
 **With JS:** post appears at top of feed without reload. Toast says "Posted!". Character counter resets. Network tab shows POST returning `200` with `{ "ok": true, "message": { ... } }`.
 
@@ -129,7 +129,7 @@ fetch('/', {
 
 ## 9. Theme switching
 
-1. Select each theme from the dropdown: Dark, Light, Midnight, Forest, Sunset.
+1. Select each theme from the dropdown: Dark, Light, Blue, Midnight, Dusk.
 2. Page colors update immediately.
 3. Reload the page — theme persists.
 

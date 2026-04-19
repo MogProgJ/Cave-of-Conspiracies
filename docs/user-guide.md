@@ -9,7 +9,7 @@ An anonymous message board for posting short conspiracy theories. No account req
 1. At the top of the page, enter a **nickname** (alias) in the first field.
 2. Select a **community** from the dropdown (e.g., General, Deep State, Cryptids) or leave it on the default.
 3. Type your message in the text area (max 240 characters). The counter updates as you type.
-4. Click **Transmit**.
+4. Click **Post**.
 
 Your post appears at the top of the feed. With JS enabled, it appears instantly without page reload.
 
@@ -47,13 +47,13 @@ The post is removed. With JS, it fades out. Without JS, the page reloads.
 
 ## Theme switching
 
-In the sidebar (or header area), there is a theme picker dropdown with 5 options:
+In the header area, there is a theme picker dropdown with 5 options:
 
 - Dark (default)
 - Light
+- Blue
 - Midnight
-- Forest
-- Sunset
+- Dusk
 
 Select a theme and the page updates immediately. Your choice is saved in the browser and persists across reloads.
 

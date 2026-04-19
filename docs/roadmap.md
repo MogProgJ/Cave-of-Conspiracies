@@ -37,6 +37,8 @@ This is where we are now. Goals:
 - [x] Document request/response contracts
 - [x] Define manual smoke-test workflow
 - [x] Align `AGENTS.md` and `setup.sh` with reality
+- [x] Remove accidental vendor/XAMPP/PEAR artifacts
+- [x] Add local dev doctor script (`tools/dev_doctor.php`)
 - [ ] Migration runner script (bash or PHP, applies in filename order)
 - [ ] PHPUnit bootstrap and tests for the 5 core flows
 
