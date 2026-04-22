@@ -26,11 +26,13 @@ const BASE_URL: string =
 export interface ApiOk<T> {
   ok: true;
   data: T;
+  error?: undefined;
 }
 
 export interface ApiError {
   ok: false;
   error: string;
+  data?: undefined;
 }
 
 export type ApiResult<T> = ApiOk<T> | ApiError;
@@ -124,6 +126,41 @@ export interface ProfileSummary {
   stats: ProfileStats;
 }
 
+export interface SessionPayload {
+  authenticated: boolean;
+  account: (SessionAccount & {
+    bio?: string | null;
+    email?: string;
+    created_at?: string;
+  }) | null;
+  is_admin: boolean;
+}
+
+export interface FeedResponse {
+  threads: ThreadCard[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+export interface CommunityDetailResponse {
+  community: CommunityCard;
+  threads: ThreadCard[];
+  total: number;
+}
+
+export interface ProfileResponse {
+  profile: ProfileSummary;
+  threads: ThreadCard[];
+  comments: CommentItem[];
+}
+
+export interface VoteResponse {
+  id: number;
+  upvotes: number;
+  downvotes: number;
+}
+
 // ---------------------------------------------------------------------------
 // Core fetch wrapper
 // ---------------------------------------------------------------------------
@@ -139,11 +176,22 @@ async function apiFetch<T>(
       headers: { Accept: 'application/json', ...init?.headers },
       ...init,
     });
+
     const json = (await res.json()) as ApiResult<T>;
     return json;
   } catch (err) {
     return { ok: false, error: String(err) };
   }
+}
+
+function jsonRequest(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', payload?: unknown): RequestInit {
+  return {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -163,8 +211,8 @@ export async function getHealth(): Promise<ApiResult<HealthState>> {
  * Returns whether the visitor is authenticated and their basic profile.
  * Call this once at app bootstrap to seed the session context.
  */
-export async function getSession(): Promise<ApiResult<SessionState>> {
-  return apiFetch<SessionState>('session');
+export async function getSession(): Promise<ApiResult<SessionPayload>> {
+  return apiFetch<SessionPayload>('session');
 }
 
 /**
@@ -172,19 +220,31 @@ export async function getSession(): Promise<ApiResult<SessionState>> {
  * Returns a paginated list of thread cards.
  * Not yet implemented on the backend — placeholder for next integration phase.
  */
-export async function getThreads(params?: {
+export async function getFeed(params?: {
   community?: string;
   sort?: 'new' | 'top' | 'old';
   page?: number;
   limit?: number;
-}): Promise<ApiResult<{ threads: ThreadCard[]; total: number }>> {
+  q?: string;
+}): Promise<ApiResult<FeedResponse>> {
   const qs = new URLSearchParams();
   if (params?.community) qs.set('community', params.community);
   if (params?.sort) qs.set('sort', params.sort);
   if (params?.page != null) qs.set('page', String(params.page));
   if (params?.limit != null) qs.set('limit', String(params.limit));
+  if (params?.q) qs.set('q', params.q);
   const query = qs.toString() ? `?${qs}` : '';
-  return apiFetch<{ threads: ThreadCard[]; total: number }>(`threads${query}`);
+  return apiFetch<FeedResponse>(`feed${query}`);
+}
+
+export async function getThreads(params?: {
+  community?: string;
+  sort?: 'new' | 'top' | 'old';
+  page?: number;
+  limit?: number;
+  q?: string;
+}): Promise<ApiResult<FeedResponse>> {
+  return getFeed(params);
 }
 
 /**
@@ -196,6 +256,31 @@ export async function getThread(id: number): Promise<ApiResult<ThreadDetail>> {
   return apiFetch<ThreadDetail>(`threads/${id}`);
 }
 
+export async function createThread(payload: {
+  title: string;
+  body: string;
+  community_slug?: string;
+}): Promise<ApiResult<ThreadDetail>> {
+  return apiFetch<ThreadDetail>('threads', jsonRequest('POST', payload));
+}
+
+export async function createComment(threadId: number, payload: { body: string }): Promise<ApiResult<{ comment: CommentItem }>> {
+  return apiFetch<{ comment: CommentItem }>(`threads/${threadId}/comments`, jsonRequest('POST', payload));
+}
+
+export async function voteThread(threadId: number, payload: { type: 'up' | 'down' }): Promise<ApiResult<VoteResponse>> {
+  return apiFetch<VoteResponse>(`threads/${threadId}/vote`, jsonRequest('POST', payload));
+}
+
+export async function submitReport(payload: {
+  target_type: 'message' | 'comment';
+  target_id: number;
+  reason: 'spam' | 'abuse' | 'illegal' | 'misinfo' | 'other';
+  note?: string;
+}): Promise<ApiResult<{ reported: boolean }>> {
+  return apiFetch<{ reported: boolean }>('reports', jsonRequest('POST', payload));
+}
+
 /**
  * GET /api/communities
  * Returns a list of community cards enriched with presentation metadata.
@@ -205,11 +290,36 @@ export async function getCommunities(): Promise<ApiResult<{ communities: Communi
   return apiFetch<{ communities: CommunityCard[] }>('communities');
 }
 
+export async function getCommunity(slug: string): Promise<ApiResult<CommunityDetailResponse>> {
+  return apiFetch<CommunityDetailResponse>(`communities/${slug}`);
+}
+
 /**
  * GET /api/profiles/<id>
  * Returns the public profile summary for a given account ID.
  * Not yet implemented on the backend — placeholder for next integration phase.
  */
-export async function getProfile(id: number): Promise<ApiResult<ProfileSummary>> {
-  return apiFetch<ProfileSummary>(`profiles/${id}`);
+export async function getMyProfile(): Promise<ApiResult<ProfileResponse>> {
+  return apiFetch<ProfileResponse>('profile/me');
+}
+
+export async function getProfile(id: number): Promise<ApiResult<ProfileResponse>> {
+  return apiFetch<ProfileResponse>(`profile/${id}`);
+}
+
+export async function login(payload: { email: string; password: string }): Promise<ApiResult<SessionPayload>> {
+  return apiFetch<SessionPayload>('auth/login', jsonRequest('POST', payload));
+}
+
+export async function register(payload: {
+  email: string;
+  password: string;
+  password_confirm: string;
+  display_name: string;
+}): Promise<ApiResult<SessionPayload>> {
+  return apiFetch<SessionPayload>('auth/register', jsonRequest('POST', payload));
+}
+
+export async function logout(): Promise<ApiResult<{ authenticated: boolean }>> {
+  return apiFetch<{ authenticated: boolean }>('auth/logout', jsonRequest('POST'));
 }

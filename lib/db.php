@@ -155,7 +155,7 @@ function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug 
   }
   // Derive a title stub when none is supplied (first 77 chars of body).
   if ($title === null) {
-    $title = mb_substr($body, 0, 77) . (mb_strlen($body) > 77 ? '\u{2026}' : '');
+    $title = mb_substr($body, 0, 77) . (mb_strlen($body) > 77 ? '...' : '');
   }
   $title = mb_substr(trim($title), 0, 200);
   $stmt = $pdo->prepare('INSERT INTO messages(title, user_id, body, owner_token, account_id) VALUES (?, ?, ?, ?, ?)');
@@ -174,6 +174,31 @@ function countMessages(PDO $pdo, string $q): int {
   $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM messages WHERE status = 'visible' AND body LIKE ?");
   $stmt->execute(['%' . $q . '%']);
   return (int)$stmt->fetch()['c'];
+}
+
+function countMessagesByCommunity(PDO $pdo, string $communitySlug, string $q = ''): int {
+  $communitySlug = strtolower(trim($communitySlug));
+  $q = trim($q);
+  if ($communitySlug === '') {
+    return 0;
+  }
+
+  $sql = "SELECT COUNT(*) AS c
+          FROM messages m
+          JOIN message_topics mt ON mt.message_id = m.id
+          JOIN communities c ON c.id = mt.community_id
+          WHERE m.status = 'visible' AND c.slug = :slug";
+  if ($q !== '') {
+    $sql .= ' AND m.body LIKE :like';
+  }
+
+  $stmt = $pdo->prepare($sql);
+  $stmt->bindValue(':slug', $communitySlug, PDO::PARAM_STR);
+  if ($q !== '') {
+    $stmt->bindValue(':like', '%' . $q . '%', PDO::PARAM_STR);
+  }
+  $stmt->execute();
+  return (int)($stmt->fetch()['c'] ?? 0);
 }
 
 function deleteMessage(PDO $pdo, int $id, string $ownerToken = '', ?int $accountId = null): bool {
@@ -236,6 +261,45 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
   $sql = $base . ' AND m.body LIKE :like ORDER BY ' . $order . ' LIMIT :limit OFFSET :offset';
   $stmt = $pdo->prepare($sql);
   $stmt->bindValue(':like', '%' . trim($q) . '%', PDO::PARAM_STR);
+  $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+  $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+  $stmt->execute();
+  $rows = $stmt->fetchAll();
+  return hydrateComments($pdo, $rows);
+}
+
+function listMessagesByCommunity(PDO $pdo, string $communitySlug, string $q, int $limit, int $offset, string $sort = 'new'): array {
+  $communitySlug = strtolower(trim($communitySlug));
+  if ($communitySlug === '') {
+    return [];
+  }
+
+  $order = 'm.id DESC';
+  if ($sort === 'old') {
+    $order = 'm.id ASC';
+  } elseif ($sort === 'top') {
+    $order = ' (CAST(m.upvotes AS SIGNED) - CAST(m.downvotes AS SIGNED)) DESC, m.id DESC';
+  }
+
+  $base = "SELECT m.id, m.title, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.account_id,
+                  u.nickname,
+                  c.name AS community_name, c.slug AS community_slug
+           FROM messages m
+           JOIN users u ON u.id = m.user_id
+           JOIN message_topics mt ON mt.message_id = m.id
+           JOIN communities c ON c.id = mt.community_id
+           WHERE m.status = 'visible' AND c.slug = :slug";
+
+  if (trim($q) !== '') {
+    $base .= ' AND m.body LIKE :like';
+  }
+
+  $sql = $base . " ORDER BY $order LIMIT :limit OFFSET :offset";
+  $stmt = $pdo->prepare($sql);
+  $stmt->bindValue(':slug', $communitySlug, PDO::PARAM_STR);
+  if (trim($q) !== '') {
+    $stmt->bindValue(':like', '%' . trim($q) . '%', PDO::PARAM_STR);
+  }
   $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
   $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
   $stmt->execute();
@@ -367,6 +431,38 @@ function listCommunities(PDO $pdo, int $limit = 6): array {
       'comments_7d' => (int)$row['comments_7d'],
     ];
   }, $rows ?: []);
+}
+
+function getCommunityBySlug(PDO $pdo, string $slug): ?array {
+  $slug = strtolower(trim($slug));
+  if ($slug === '') {
+    return null;
+  }
+
+  $sql = 'SELECT c.id, c.slug, c.name, c.tagline,
+                 COALESCE(SUM(ct.posts), 0) AS posts_7d,
+                 COALESCE(SUM(ct.comments), 0) AS comments_7d
+          FROM communities c
+          LEFT JOIN community_trends ct
+            ON ct.community_id = c.id AND ct.day >= DATE_SUB(CURRENT_DATE(), INTERVAL 6 DAY)
+          WHERE c.slug = :slug
+          GROUP BY c.id, c.slug, c.name, c.tagline
+          LIMIT 1';
+  $stmt = $pdo->prepare($sql);
+  $stmt->bindValue(':slug', $slug, PDO::PARAM_STR);
+  $stmt->execute();
+  $row = $stmt->fetch();
+  if (!$row) {
+    return null;
+  }
+
+  return [
+    'slug' => $row['slug'],
+    'name' => $row['name'],
+    'tagline' => $row['tagline'],
+    'posts_7d' => (int)$row['posts_7d'],
+    'comments_7d' => (int)$row['comments_7d'],
+  ];
 }
 
 function listActiveUsers(PDO $pdo, int $limit = 5): array {
@@ -549,6 +645,23 @@ function getPublicProfile(PDO $pdo, int $accountId): ?array {
   return $account;
 }
 
+function getAccountStats(PDO $pdo, int $accountId): array {
+  $stats = [
+    'post_count' => 0,
+    'comment_count' => 0,
+  ];
+
+  $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM messages WHERE account_id = ? AND status = 'visible'");
+  $stmt->execute([$accountId]);
+  $stats['post_count'] = (int)($stmt->fetch()['c'] ?? 0);
+
+  $stmt = $pdo->prepare("SELECT COUNT(*) AS c FROM comments WHERE account_id = ? AND status = 'visible'");
+  $stmt->execute([$accountId]);
+  $stats['comment_count'] = (int)($stmt->fetch()['c'] ?? 0);
+
+  return $stats;
+}
+
 function getRecentCommentsByAccount(PDO $pdo, int $accountId, int $limit = 10): array {
   $stmt = $pdo->prepare(
     "SELECT c.id, c.body, c.created_at, c.message_id,
@@ -565,7 +678,7 @@ function getRecentCommentsByAccount(PDO $pdo, int $accountId, int $limit = 10): 
 
 function getRecentPostsByAccount(PDO $pdo, int $accountId, int $limit = 10): array {
   $stmt = $pdo->prepare(
-    "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes,
+    "SELECT m.id, m.title, m.body, m.created_at, m.upvotes, m.downvotes,
             u.nickname, c.name AS community_name, c.slug AS community_slug
      FROM messages m
      JOIN users u ON u.id = m.user_id

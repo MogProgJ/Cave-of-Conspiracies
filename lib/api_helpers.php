@@ -56,3 +56,26 @@ function api_require_auth(): int {
     }
     return (int) $id;
 }
+
+/**
+ * Read request data from JSON body or traditional form POST.
+ *
+ * @return array<string, mixed>
+ */
+function api_request_data(): array {
+    if (!empty($_POST)) {
+        return $_POST;
+    }
+
+    $raw = file_get_contents('php://input');
+    if ($raw === false || trim($raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        api_error('Invalid JSON payload', 422);
+    }
+
+    return $decoded;
+}

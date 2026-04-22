@@ -2,17 +2,16 @@ import React from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { 
-  User, 
   Search, 
   Bell, 
-  ShieldAlert, 
-  Compass, 
-  FileText,
-  Hexagon
+  LogIn,
+  LogOut
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 export default function Navbar() {
   const location = useLocation();
+  const { session, logout } = useAuth();
   const isAuthPage = ["/login", "/register"].includes(location.pathname);
 
   if (isAuthPage) return null;
@@ -76,16 +75,36 @@ export default function Navbar() {
             <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-violet-500 rounded-full border border-cave-void shadow-[0_0_5px_rgba(139,92,246,0.8)]" />
           </NavLink>
           
-          <NavLink 
-            to="/profile"
-            className={({ isActive }) => 
-              `w-8 h-8 ml-2 rounded-full border flex items-center justify-center overflow-hidden transition-all ${
-                isActive ? "border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.2)]" : "border-white/10 opacity-70 hover:opacity-100"
-              }`
-            }
-          >
-            <img src="https://picsum.photos/seed/archon/100/100" alt="Avatar" className="w-full h-full object-cover" />
-          </NavLink>
+          {session.authenticated ? (
+            <>
+              <NavLink 
+                to={session.account ? `/profile/${session.account.id}` : '/profile'}
+                className={({ isActive }) => 
+                  `min-w-8 h-8 px-3 ml-2 rounded-full border flex items-center justify-center overflow-hidden transition-all type-ui text-[10px] font-bold uppercase tracking-widest ${
+                    isActive ? "border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.2)] text-violet-300" : "border-white/10 opacity-80 hover:opacity-100"
+                  }`
+                }
+              >
+                {(session.account?.display_name ?? 'Profile').slice(0, 10)}
+              </NavLink>
+
+              <button
+                onClick={() => void logout()}
+                className="w-9 h-9 flex items-center justify-center rounded-full text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <Link
+              to="/login"
+              className="w-9 h-9 ml-2 flex items-center justify-center rounded-full border border-white/10 text-white/50 hover:text-white hover:bg-white/5 transition-colors"
+              title="Login"
+            >
+              <LogIn className="w-4 h-4" />
+            </Link>
+          )}
         </div>
       </div>
     </nav>

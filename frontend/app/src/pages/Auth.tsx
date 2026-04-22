@@ -2,31 +2,68 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Link, useNavigate } from "react-router-dom";
 import { Mail, Lock, User, ArrowRight, Github, Hexagon } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 export default function Auth({ mode = "login" }: { mode?: "login" | "register" }) {
   const [isLogin, setIsLogin] = useState(mode === "login");
-  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const navigate = useNavigate();
+  const { login, register } = useAuth();
+
+  React.useEffect(() => {
+    setIsLogin(mode === "login");
+  }, [mode]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate successful login/register
+    setSubmitting(true);
+    setError(null);
+
+    if (isLogin) {
+      const result = await login({ email, password });
+      setSubmitting(false);
+      if (!result.ok) {
+        setError(result.error ?? "Invalid email or password.");
+        return;
+      }
+      navigate("/");
+      return;
+    }
+
+    const result = await register({
+      email,
+      password,
+      password_confirm: passwordConfirm,
+      display_name: displayName,
+    });
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.error ?? "Unable to register account.");
+      return;
+    }
     navigate("/");
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-cave-void/80 backdrop-blur-md -z-10" />
-      
-      <motion.div 
+
+      <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         className="w-full max-w-md relative"
       >
         <div className="absolute -inset-0.5 bg-gradient-to-br from-cave-violet/20 via-cave-magenta/20 to-cave-gold/20 rounded-3xl blur-xl opacity-50" />
-        
+
         <div className="relative glass-dark rounded-3xl p-8 border border-white/10 overflow-hidden shadow-2xl">
           <form onSubmit={handleSubmit} className="flex flex-col items-center mb-8 text-center">
-            <Link 
+            <Link
               to="/"
               className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cave-violet to-cave-magenta flex items-center justify-center shadow-lg mb-6 cursor-pointer group"
             >
@@ -49,19 +86,30 @@ export default function Auth({ mode = "login" }: { mode?: "login" | "register" }
                   exit={{ opacity: 0, height: 0 }}
                   className="space-y-4 overflow-hidden"
                 >
-                  <AuthInput icon={<User className="w-4 h-4" />} placeholder="Codename" type="text" />
+                  <AuthInput icon={<User className="w-4 h-4" />} placeholder="Display Name" type="text" value={displayName} onChange={setDisplayName} required={!isLogin} />
+                  <AuthInput icon={<Lock className="w-4 h-4" />} placeholder="Confirm Password" type="password" value={passwordConfirm} onChange={setPasswordConfirm} required={!isLogin} />
                 </motion.div>
               )}
             </AnimatePresence>
-            
-            <AuthInput icon={<Mail className="w-4 h-4" />} placeholder="Encrypted Email" type="email" />
-            <AuthInput icon={<Lock className="w-4 h-4" />} placeholder="Pass-Key" type="password" />
-            
-            <button 
-              onClick={handleSubmit}
-              className="w-full py-3 mt-6 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-xl type-ui text-sm font-bold tracking-widest hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all flex items-center justify-center gap-2 group text-white uppercase"
+
+            <AuthInput icon={<Mail className="w-4 h-4" />} placeholder="Email" type="email" value={email} onChange={setEmail} required />
+            <AuthInput icon={<Lock className="w-4 h-4" />} placeholder="Password" type="password" value={password} onChange={setPassword} required />
+
+            {error && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 type-ui text-xs text-red-300">
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                void handleSubmit(e as unknown as React.FormEvent);
+              }}
+              disabled={submitting}
+              className="w-full py-3 mt-6 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-xl type-ui text-sm font-bold tracking-widest hover:shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all flex items-center justify-center gap-2 group text-white uppercase disabled:opacity-50"
             >
-              {isLogin ? "Decrypt & Enter" : "Authorize Manifestation"}
+              {submitting ? "Processing..." : isLogin ? "Decrypt & Enter" : "Authorize Manifestation"}
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
 
@@ -75,10 +123,10 @@ export default function Auth({ mode = "login" }: { mode?: "login" | "register" }
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <button className="flex items-center justify-center gap-2 py-2.5 rounded-lg glass-dark hover:bg-white/10 transition-colors border border-white/10 type-ui text-xs font-bold text-white/60">
+              <button type="button" className="flex items-center justify-center gap-2 py-2.5 rounded-lg glass-dark hover:bg-white/10 transition-colors border border-white/10 type-ui text-xs font-bold text-white/60" disabled>
                 <Github className="w-4 h-4" /> Github
               </button>
-              <button className="flex items-center justify-center gap-2 py-2.5 rounded-lg glass-dark hover:bg-white/10 transition-colors border border-white/10 type-ui text-xs font-bold text-white/60">
+              <button type="button" className="flex items-center justify-center gap-2 py-2.5 rounded-lg glass-dark hover:bg-white/10 transition-colors border border-white/10 type-ui text-xs font-bold text-white/60" disabled>
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -91,7 +139,7 @@ export default function Auth({ mode = "login" }: { mode?: "login" | "register" }
 
           <p className="mt-8 text-center type-ui text-[10px] uppercase font-bold tracking-widest text-white/40">
             {isLogin ? "First time in the cave?" : "Already part of the network?"}
-            <button 
+            <button
               onClick={() => setIsLogin(!isLogin)}
               className="ml-2 text-violet-400 hover:text-fuchsia-400 transition-colors underline underline-offset-4"
             >
@@ -104,14 +152,31 @@ export default function Auth({ mode = "login" }: { mode?: "login" | "register" }
   );
 }
 
-function AuthInput({ icon, placeholder, type }: { icon: React.ReactNode, placeholder: string, type: string }) {
+function AuthInput({
+  icon,
+  placeholder,
+  type,
+  value,
+  onChange,
+  required = false,
+}: {
+  icon: React.ReactNode;
+  placeholder: string;
+  type: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
   return (
     <div className="relative group">
       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-violet-400 transition-colors">
         {icon}
       </div>
-      <input 
-        type={type} 
+      <input
+        type={type}
+        required={required}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 type-ui text-sm focus:outline-none focus:border-violet-500/50 focus:bg-white/[0.08] transition-all placeholder:text-white/20 text-white"
       />

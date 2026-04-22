@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Shell from "./components/layout/Shell";
 import { ThemeProvider } from "./ThemeContext";
+import { AuthProvider } from "./context/AuthContext";
 
 // Core Pages
 import Home from "./pages/Home";
@@ -29,14 +30,15 @@ import Editorial from "./pages/Editorial";
 export default function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <div className="selection:bg-violet-500/30 selection:text-white">
-          <Shell>
-            <Routes>
+      <AuthProvider>
+        <BrowserRouter basename="/app">
+          <div className="selection:bg-violet-500/30 selection:text-white">
+            <Shell>
+              <Routes>
               {/* Core Routes */}
               <Route path="/" element={<Home />} />
               <Route path="/explore" element={<Explore />} />
-              <Route path="/community/:id" element={<CommunityDetail />} />
+              <Route path="/community/:slug" element={<CommunityDetail />} />
               <Route path="/thread/:id" element={<ThreadDetail />} />
               <Route path="/search" element={<Search />} />
 
@@ -60,10 +62,11 @@ export default function App() {
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Shell>
-        </div>
-      </BrowserRouter>
+              </Routes>
+            </Shell>
+          </div>
+        </BrowserRouter>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
