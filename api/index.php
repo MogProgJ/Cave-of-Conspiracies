@@ -347,6 +347,151 @@ switch ($route) {
             ]);
         }
 
+        // GET /api/profile/me/settings
+        if ($method === 'GET' && $parts === ['profile', 'me', 'settings']) {
+            $accountId = api_require_auth();
+            $account = getAccountById($pdo, $accountId);
+            if (!$account) {
+                api_error('Account not found', 404);
+            }
+            api_ok(api_profile_settings($account));
+        }
+
+        // POST /api/profile/me/settings
+        if ($method === 'POST' && $parts === ['profile', 'me', 'settings']) {
+            $accountId = api_require_auth();
+            $payload = api_request_data();
+            $displayName = (string)($payload['display_name'] ?? '');
+            $bio = (string)($payload['bio'] ?? '');
+
+            $updated = updateAccountProfile($pdo, $accountId, $displayName, $bio);
+            if (!$updated) {
+                api_error('Display name is required', 422);
+            }
+
+            $_SESSION['account']['display_name'] = mb_substr(trim($displayName), 0, 60);
+            $account = getAccountById($pdo, $accountId);
+            if (!$account) {
+                api_error('Account not found', 404);
+            }
+            api_ok(api_profile_settings($account));
+        }
+
+        // POST /api/profile/me/password
+        if ($method === 'POST' && $parts === ['profile', 'me', 'password']) {
+            $accountId = api_require_auth();
+            $payload = api_request_data();
+            $current = (string)($payload['current_password'] ?? '');
+            $next = (string)($payload['new_password'] ?? '');
+            $confirm = (string)($payload['new_password_confirm'] ?? '');
+
+            if ($next !== $confirm) {
+                api_error('New passwords do not match', 422);
+            }
+
+            $ok = updateAccountPassword($pdo, $accountId, $current, $next);
+            if (!$ok) {
+                api_error('Current password is incorrect or new password is too short', 422);
+            }
+
+            api_ok(['changed' => true]);
+        }
+
+        // GET /api/search?q=...
+        if ($method === 'GET' && $parts === ['search']) {
+            $q = trim((string)($_GET['q'] ?? ''));
+            $limit = max(1, min(50, (int)($_GET['limit'] ?? 20)));
+            if ($q === '') {
+                api_ok([
+                    'query' => '',
+                    'threads' => [],
+                    'communities' => [],
+                ]);
+            }
+
+            $threadRows = listMessages($pdo, $q, $limit, 0, 'top');
+            $communityRows = searchCommunities($pdo, $q, $limit);
+
+            api_ok([
+                'query' => $q,
+                'threads' => array_values(array_map('api_thread_card', $threadRows)),
+                'communities' => array_values(array_map('api_community_card', $communityRows)),
+            ]);
+        }
+
+        // POST /api/admin/login
+        if ($method === 'POST' && $parts === ['admin', 'login']) {
+            $payload = api_request_data();
+            $password = (string)($payload['password'] ?? '');
+
+            if ($ADMIN_PASSWORD_HASH === '') {
+                api_error('Admin password is not configured', 503);
+            }
+
+            if (!password_verify($password, $ADMIN_PASSWORD_HASH)) {
+                api_error('Invalid admin password', 401);
+            }
+
+            $_SESSION['is_admin'] = true;
+            api_ok(['is_admin' => true]);
+        }
+
+        // POST /api/admin/logout
+        if ($method === 'POST' && $parts === ['admin', 'logout']) {
+            unset($_SESSION['is_admin']);
+            api_ok(['is_admin' => false]);
+        }
+
+        // GET /api/admin/reports
+        if ($method === 'GET' && $parts === ['admin', 'reports']) {
+            api_require_admin();
+            $status = (string)($_GET['status'] ?? 'open');
+            $reports = listReports($pdo, $status, 100, 0);
+            api_ok([
+                'status' => $status,
+                'reports' => array_values(array_map('api_admin_report_item', $reports)),
+                'open_count' => countReports($pdo, 'open'),
+            ]);
+        }
+
+        // POST /api/admin/moderation
+        if ($method === 'POST' && $parts === ['admin', 'moderation']) {
+            api_require_admin();
+            $payload = api_request_data();
+            $targetType = (string)($payload['target_type'] ?? '');
+            $targetId = (int)($payload['target_id'] ?? 0);
+            $action = (string)($payload['action'] ?? '');
+            $reason = (string)($payload['reason'] ?? '');
+            $reportId = (int)($payload['report_id'] ?? 0);
+
+            if ($action === 'dismiss') {
+                if ($reportId <= 0 || !resolveReport($pdo, $reportId, 'dismissed')) {
+                    api_error('Unable to dismiss report', 422);
+                }
+                logModerationAction($pdo, $targetType, $targetId, 'dismiss_report', $reason);
+                api_ok(['applied' => true, 'action' => $action]);
+            }
+
+            $statusMap = [
+                'hide' => 'hidden',
+                'remove' => 'removed_by_mod',
+                'restore' => 'visible',
+            ];
+            $newStatus = $statusMap[$action] ?? null;
+            if ($newStatus === null) {
+                api_error('Invalid moderation action', 422);
+            }
+
+            if (!moderateContent($pdo, $targetType, $targetId, $newStatus, $reason)) {
+                api_error('Unable to apply moderation action', 422);
+            }
+            if ($reportId > 0) {
+                resolveReport($pdo, $reportId, 'reviewed');
+            }
+
+            api_ok(['applied' => true, 'action' => $action]);
+        }
+
         api_error('Not found', 404);
         break;
 }

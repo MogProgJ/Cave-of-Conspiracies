@@ -465,6 +465,40 @@ function getCommunityBySlug(PDO $pdo, string $slug): ?array {
   ];
 }
 
+function searchCommunities(PDO $pdo, string $q, int $limit = 20): array {
+  $q = trim($q);
+  if ($q === '') {
+    return [];
+  }
+
+  $sql = 'SELECT c.id, c.slug, c.name, c.tagline,
+                 COALESCE(SUM(ct.posts), 0) AS posts_7d,
+                 COALESCE(SUM(ct.comments), 0) AS comments_7d
+          FROM communities c
+          LEFT JOIN community_trends ct
+            ON ct.community_id = c.id AND ct.day >= DATE_SUB(CURRENT_DATE(), INTERVAL 6 DAY)
+          WHERE c.name LIKE :like OR c.slug LIKE :like OR c.tagline LIKE :like
+          GROUP BY c.id, c.slug, c.name, c.tagline
+          ORDER BY posts_7d DESC, comments_7d DESC, c.name ASC
+          LIMIT :limit';
+
+  $stmt = $pdo->prepare($sql);
+  $stmt->bindValue(':like', '%' . $q . '%', PDO::PARAM_STR);
+  $stmt->bindValue(':limit', max(1, min(50, $limit)), PDO::PARAM_INT);
+  $stmt->execute();
+  $rows = $stmt->fetchAll();
+
+  return array_map(static function ($row) {
+    return [
+      'slug' => $row['slug'],
+      'name' => $row['name'],
+      'tagline' => $row['tagline'],
+      'posts_7d' => (int)$row['posts_7d'],
+      'comments_7d' => (int)$row['comments_7d'],
+    ];
+  }, $rows ?: []);
+}
+
 function listActiveUsers(PDO $pdo, int $limit = 5): array {
   $sql = 'SELECT u.nickname, ua.messages, ua.comments, ua.last_seen
           FROM user_activity ua

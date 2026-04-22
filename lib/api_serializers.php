@@ -232,3 +232,39 @@ function api_profile_summary(array $account, array $stats): array {
         ],
     ];
 }
+
+/**
+ * Admin report row shape for moderation console.
+ *
+ * @param array<string,mixed> $row
+ * @return array<string,mixed>
+ */
+function api_admin_report_item(array $row): array {
+    return [
+        'id' => (int)($row['id'] ?? 0),
+        'target_type' => (string)($row['target_type'] ?? ''),
+        'target_id' => (int)($row['target_id'] ?? 0),
+        'reason' => (string)($row['reason'] ?? ''),
+        'note' => (string)($row['note'] ?? ''),
+        'status' => (string)($row['status'] ?? ''),
+        'target_body' => ($row['target_body'] ?? null) !== null ? (string)$row['target_body'] : null,
+        'created_at' => (string)($row['created_at'] ?? ''),
+    ];
+}
+
+/**
+ * Rich profile settings payload for settings form initial state.
+ *
+ * @param array<string,mixed> $account
+ * @return array<string,mixed>
+ */
+function api_profile_settings(array $account): array {
+    return [
+        'id' => (int)($account['id'] ?? 0),
+        'email' => (string)($account['email'] ?? ''),
+        'display_name' => (string)($account['display_name'] ?? ''),
+        'bio' => ($account['bio'] ?? null) !== null ? (string)$account['bio'] : '',
+        'role' => (string)($account['role'] ?? 'user'),
+        'created_at' => (string)($account['created_at'] ?? ''),
+    ];
+}

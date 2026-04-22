@@ -161,6 +161,38 @@ export interface VoteResponse {
   downvotes: number;
 }
 
+export interface SearchResponse {
+  query: string;
+  threads: ThreadCard[];
+  communities: CommunityCard[];
+}
+
+export interface AdminReportItem {
+  id: number;
+  target_type: 'message' | 'comment';
+  target_id: number;
+  reason: string;
+  note: string;
+  status: string;
+  target_body: string | null;
+  created_at: string;
+}
+
+export interface AdminReportsResponse {
+  status: string;
+  reports: AdminReportItem[];
+  open_count: number;
+}
+
+export interface ProfileSettings {
+  id: number;
+  email: string;
+  display_name: string;
+  bio: string;
+  role: string;
+  created_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // Core fetch wrapper
 // ---------------------------------------------------------------------------
@@ -322,4 +354,57 @@ export async function register(payload: {
 
 export async function logout(): Promise<ApiResult<{ authenticated: boolean }>> {
   return apiFetch<{ authenticated: boolean }>('auth/logout', jsonRequest('POST'));
+}
+
+export async function searchContent(params: {
+  q: string;
+  limit?: number;
+}): Promise<ApiResult<SearchResponse>> {
+  const qs = new URLSearchParams();
+  qs.set('q', params.q);
+  if (params.limit != null) {
+    qs.set('limit', String(params.limit));
+  }
+  return apiFetch<SearchResponse>(`search?${qs.toString()}`);
+}
+
+export async function adminLogin(payload: { password: string }): Promise<ApiResult<{ is_admin: boolean }>> {
+  return apiFetch<{ is_admin: boolean }>('admin/login', jsonRequest('POST', payload));
+}
+
+export async function adminLogout(): Promise<ApiResult<{ is_admin: boolean }>> {
+  return apiFetch<{ is_admin: boolean }>('admin/logout', jsonRequest('POST'));
+}
+
+export async function getAdminReports(status: string = 'open'): Promise<ApiResult<AdminReportsResponse>> {
+  return apiFetch<AdminReportsResponse>(`admin/reports?status=${encodeURIComponent(status)}`);
+}
+
+export async function applyModeration(payload: {
+  target_type: 'message' | 'comment';
+  target_id: number;
+  action: 'hide' | 'remove' | 'restore' | 'dismiss';
+  reason?: string;
+  report_id?: number;
+}): Promise<ApiResult<{ applied: boolean; action: string }>> {
+  return apiFetch<{ applied: boolean; action: string }>('admin/moderation', jsonRequest('POST', payload));
+}
+
+export async function getProfileSettings(): Promise<ApiResult<ProfileSettings>> {
+  return apiFetch<ProfileSettings>('profile/me/settings');
+}
+
+export async function updateProfileSettings(payload: {
+  display_name: string;
+  bio: string;
+}): Promise<ApiResult<ProfileSettings>> {
+  return apiFetch<ProfileSettings>('profile/me/settings', jsonRequest('POST', payload));
+}
+
+export async function changeMyPassword(payload: {
+  current_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}): Promise<ApiResult<{ changed: boolean }>> {
+  return apiFetch<{ changed: boolean }>('profile/me/password', jsonRequest('POST', payload));
 }

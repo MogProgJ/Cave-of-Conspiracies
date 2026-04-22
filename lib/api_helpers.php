@@ -58,6 +58,15 @@ function api_require_auth(): int {
 }
 
 /**
+ * Abort with 403 when the current session is not admin-authorized.
+ */
+function api_require_admin(): void {
+    if (empty($_SESSION['is_admin'])) {
+        api_error('Admin privileges required', 403);
+    }
+}
+
+/**
  * Read request data from JSON body or traditional form POST.
  *
  * @return array<string, mixed>
