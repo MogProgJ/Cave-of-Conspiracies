@@ -1,0 +1,51 @@
+# Cave of Conspiracies — Apache routing
+#
+# Routing layers (evaluated top-to-bottom):
+#
+#   1. /api/*         → api/index.php  (PHP JSON API)
+#   2. /app/assets/*  → public/app/assets/* (Vite static assets, served directly)
+#   3. /app/*         → public/app/index.html (React SPA catch-all)
+#   4. Everything else → legacy PHP app (index.php at repo root)
+#
+# Requirements:
+#   - mod_rewrite must be enabled (a2enmod rewrite / XAMPP default: enabled)
+#   - AllowOverride All must be set for this directory in httpd.conf
+#
+# RewriteBase:
+#   If XAMPP serves this repo at http://localhost/Cave-of-Conspiracies/,
+#   set:  RewriteBase /Cave-of-Conspiracies/
+#   If a VirtualHost points DocumentRoot here, use:  RewriteBase /
+
+Options -Indexes
+RewriteEngine On
+
+# ----------------------------------------------------------------
+# 0. Let real files and directories through untouched
+# ----------------------------------------------------------------
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# ----------------------------------------------------------------
+# 1. /api/* → PHP API entry point
+#    The PHP file re-resolves the route from REQUEST_URI.
+# ----------------------------------------------------------------
+RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
+
+# ----------------------------------------------------------------
+# 2. /app/assets/* → serve Vite build assets directly
+#    These are real files in public/app/assets/ but the URL base is /app/
+# ----------------------------------------------------------------
+RewriteRule ^app/assets/(.*)$ public/app/assets/$1 [L]
+
+# ----------------------------------------------------------------
+# 3. /app or /app/* → React SPA entrypoint
+#    Any client-side route within the React app falls back here.
+# ----------------------------------------------------------------
+RewriteRule ^app(/.*)?$ public/app/index.html [L]
+
+# ----------------------------------------------------------------
+# 4. Everything else → legacy PHP app (unchanged behaviour)
+#    index.php handles routing via $_GET['page']
+# ----------------------------------------------------------------
+# (no rule needed — Apache falls through to index.php naturally)
