@@ -15,7 +15,8 @@ import {
   Reply,
   Copy,
   Check,
-  Send
+  Send,
+  Bookmark
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 

@@ -148,13 +148,18 @@ function recordCommunityActivity(PDO $pdo, int $communityId, string $kind): void
   ]);
 }
 
-function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug = null, string $ownerToken = '', ?int $accountId = null): ?int {
-  $body = mb_substr(trim($body), 0, 240);
+function addMessage(PDO $pdo, int $userId, string $body, ?string $communitySlug = null, string $ownerToken = '', ?int $accountId = null, ?string $title = null): ?int {
+  $body = trim($body);
   if ($body === '') {
     return null;
   }
-  $stmt = $pdo->prepare('INSERT INTO messages(user_id, body, owner_token, account_id) VALUES (?, ?, ?, ?)');
-  $stmt->execute([$userId, $body, $ownerToken, $accountId]);
+  // Derive a title stub when none is supplied (first 77 chars of body).
+  if ($title === null) {
+    $title = mb_substr($body, 0, 77) . (mb_strlen($body) > 77 ? '\u{2026}' : '');
+  }
+  $title = mb_substr(trim($title), 0, 200);
+  $stmt = $pdo->prepare('INSERT INTO messages(title, user_id, body, owner_token, account_id) VALUES (?, ?, ?, ?, ?)');
+  $stmt->execute([$title, $userId, $body, $ownerToken, $accountId]);
   $messageId = (int)$pdo->lastInsertId();
   recordUserActivity($pdo, $userId, 'message');
   assignMessageToCommunity($pdo, $messageId, $communitySlug);
@@ -211,7 +216,7 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
   } elseif ($sort === 'top') {
     $order = ' (CAST(m.upvotes AS SIGNED) - CAST(m.downvotes AS SIGNED)) DESC, m.id DESC';
   }
-  $base = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.account_id,
+  $base = "SELECT m.id, m.title, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.account_id,
                   u.nickname,
                   c.name AS community_name, c.slug AS community_slug
            FROM messages m
@@ -239,7 +244,7 @@ function listMessages(PDO $pdo, string $q, int $limit, int $offset, string $sort
 }
 
 function getMessage(PDO $pdo, int $id): ?array {
-  $sql = "SELECT m.id, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.account_id, m.status,
+  $sql = "SELECT m.id, m.title, m.body, m.created_at, m.upvotes, m.downvotes, m.owner_token, m.account_id, m.status,
                  u.nickname,
                  c.name AS community_name, c.slug AS community_slug
           FROM messages m
@@ -259,7 +264,7 @@ function getMessage(PDO $pdo, int $id): ?array {
 
 function addComment(PDO $pdo, int $messageId, string $nickname, string $body): ?array {
   $messageId = max(0, $messageId);
-  $body = mb_substr(trim($body), 0, 240);
+  $body = trim($body);
   $nickname = mb_substr(trim($nickname), 0, 60) ?: 'Anon';
   if ($messageId === 0 || $body === '') {
     return null;
