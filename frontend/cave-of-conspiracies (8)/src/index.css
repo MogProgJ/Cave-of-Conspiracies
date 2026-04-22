@@ -1,0 +1,228 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:wght@100;200;300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-serif: "Cormorant Garamond", serif;
+
+  --color-cave-void: var(--bg-main);
+  --color-cave-navy: var(--bg-navy);
+  --color-cave-indigo: var(--bg-indigo);
+  --color-cave-dark-violet: var(--bg-dark);
+  
+  --color-violet-300: var(--accent-300);
+  --color-violet-400: var(--accent-400);
+  --color-violet-500: var(--accent-500);
+  --color-violet-600: var(--accent-600);
+  --color-fuchsia-300: var(--secondary-300);
+  --color-fuchsia-400: var(--secondary-400);
+  --color-fuchsia-500: var(--secondary-500);
+  --color-fuchsia-600: var(--secondary-600);
+
+  --animate-spin-slow: spin 12s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+}
+
+@layer base {
+  :root {
+    /* Theme: Void (Default) */
+    --bg-main: #030308;
+    --bg-navy: #050510;
+    --bg-indigo: #0d0d29;
+    --bg-dark: #1a1a3a;
+    
+    --accent-300: #a78bfa;
+    --accent-400: #8b5cf6;
+    --accent-500: #7c3aed;
+    --accent-600: #6d28d9;
+    
+    --secondary-300: #f0abfc;
+    --secondary-400: #e879f9;
+    --secondary-500: #d946ef;
+    --secondary-600: #c026d3;
+  }
+
+  [data-theme="slate"] {
+    --bg-main: #0f1115;
+    --bg-navy: #13161b;
+    --bg-indigo: #1b1f27;
+    --bg-dark: #232832;
+    
+    --accent-300: #cbd5e1;
+    --accent-400: #94a3b8;
+    --accent-500: #64748b;
+    --accent-600: #475569;
+    
+    --secondary-300: #e2e8f0;
+    --secondary-400: #cbd5e1;
+    --secondary-500: #94a3b8;
+    --secondary-600: #64748b;
+  }
+
+  [data-theme="obsidian"] {
+    --bg-main: #020617;
+    --bg-navy: #040d21;
+    --bg-indigo: #091738;
+    --bg-dark: #0e2354;
+    
+    --accent-300: #93c5fd;
+    --accent-400: #60a5fa;
+    --accent-500: #3b82f6;
+    --accent-600: #2563eb;
+    
+    --secondary-300: #67e8f9;
+    --secondary-400: #22d3ee;
+    --secondary-500: #06b6d4;
+    --secondary-600: #0891b2;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-cave-void text-white/90 font-sans antialiased selection:bg-violet-500/30 selection:text-white;
+    overflow-x: hidden;
+  }
+}
+
+/* Signature Typography Rhythm */
+.type-display-large { 
+  @apply font-serif italic text-6xl md:text-7xl lg:text-8xl tracking-tight leading-tight font-medium;
+}
+
+.type-display-medium {
+  @apply font-serif italic text-3xl md:text-4xl lg:text-5xl tracking-tight leading-tight font-medium;
+}
+
+.type-title {
+  @apply font-sans text-xl md:text-2xl font-semibold tracking-tight text-white/90;
+}
+
+.type-subtitle {
+  @apply font-sans text-sm md:text-base font-medium text-white/70;
+}
+
+.type-metadata {
+  @apply font-sans font-bold text-[10px] uppercase tracking-widest text-[#808090];
+}
+
+.type-ui {
+  @apply font-sans font-medium text-xs md:text-sm tracking-wide;
+}
+
+@utility glass {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+@utility glass-dark {
+  background: var(--bg-navy, rgba(5, 5, 12, 0.4));
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-pill {
+  @apply glass rounded-full px-6 py-2 border-white/10;
+}
+
+/* Atmospheric Effects */
+.vignette {
+  background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.6) 100%);
+  pointer-events: none;
+}
+
+/* Density overrides */
+[data-density="compact"] .p-6,
+[data-density="compact"] .p-8 {
+  padding: 1.25rem !important;
+}
+[data-density="compact"] .py-24 {
+  padding-top: 4rem !important;
+  padding-bottom: 4rem !important;
+}
+[data-density="compact"] .gap-8 {
+  gap: 1.5rem !important;
+}
+[data-density="compact"] .glass-dark {
+  padding: 1rem !important;
+}
+
+.noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  filter: contrast(120%) brightness(100%);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.gradient-text {
+  background: linear-gradient(to bottom, #ffffff 30%, rgba(255,255,255,0.6) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-accent {
+  background: linear-gradient(135deg, #fff 0%, var(--accent-400) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.glow-mesh {
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(217, 70, 239, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, var(--bg-main) 0%, transparent 100%);
+}
+
+[data-theme="slate"] .glow-mesh {
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(148, 163, 184, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(203, 213, 225, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, var(--bg-main) 0%, transparent 100%);
+}
+
+[data-theme="obsidian"] .glow-mesh {
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, var(--bg-main) 0%, transparent 100%);
+}
+
+.mask-fade-bottom {
+  mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+
+.mask-fade-edges {
+  mask-image: radial-gradient(circle, black 60%, transparent 100%);
+}
+
+/* --- Performance / Low Effects Mode Overrides --- */
+[data-effects="reduced"] .glass, 
+[data-effects="reduced"] .glass-dark,
+[data-effects="reduced"] .glass-pill {
+  backdrop-filter: none !important;
+  background: var(--bg-navy) !important;
+}
+
+[data-effects="reduced"] .noise {
+  display: none !important;
+}
+
+[data-effects="reduced"] .vignette {
+  opacity: 0.3 !important;
+}
+
+[data-effects="reduced"] .glow-mesh {
+  background: var(--bg-main) !important;
+}
+
+[data-effects="reduced"] * {
+  /* Reduce transition overhead globally */
+  transition-duration: 0.1s !important;
+}
